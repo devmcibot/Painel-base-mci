@@ -9,7 +9,7 @@ export default function PacienteForm() {
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState("");
   const [telefone, setTelefone] = useState("");
-  const [nascimento, setNascimento] = useState(""); // "YYYY-MM-DD"
+  const [nascimento, setNascimento] = useState(""); // "yyyy-mm-dd" (type="date")
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -19,15 +19,16 @@ export default function PacienteForm() {
     setErro(null);
 
     try {
-      const res = await fetch("/api/medico/pacientes/novo", {
+      // 🔧 POST na rota correta: /api/medico/pacientes (conforme a route que você atualizou)
+      const res = await fetch("/api/medico/pacientes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          nome,
-          cpf,
-          email: email || null,
-          telefone: telefone || null,
-          nascimento: nascimento || null,
+          nome: nome.trim(),
+          cpf: cpf.trim(),
+          email: email.trim() || undefined,      // opcional
+          telefone: telefone.trim() || undefined, // opcional
+          nascimento: nascimento || undefined,    // "yyyy-mm-dd" (a API converte p/ Date)
         }),
       });
 
@@ -38,10 +39,9 @@ export default function PacienteForm() {
         return;
       }
 
-      // deu bom: volta para a lista
       router.push("/medico/pacientes");
       router.refresh();
-    } catch (err: any) {
+    } catch {
       setErro("Erro inesperado ao salvar.");
       setLoading(false);
     }
@@ -52,8 +52,10 @@ export default function PacienteForm() {
       {erro && <p className="text-red-600 text-sm">{erro}</p>}
 
       <div className="space-y-1">
-        <label className="text-sm">Nome</label>
+        <label className="text-sm" htmlFor="nome">Nome</label>
         <input
+          id="nome"
+          name="nome"
           className="w-full border px-3 py-2 rounded"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
@@ -62,8 +64,10 @@ export default function PacienteForm() {
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm">CPF</label>
+        <label className="text-sm" htmlFor="cpf">CPF</label>
         <input
+          id="cpf"
+          name="cpf"
           className="w-full border px-3 py-2 rounded"
           value={cpf}
           onChange={(e) => setCpf(e.target.value)}
@@ -72,18 +76,22 @@ export default function PacienteForm() {
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm">Data de nascimento</label>
+        <label className="text-sm" htmlFor="nascimento">Data de nascimento</label>
         <input
+          id="nascimento"
+          name="nascimento"
           type="date"
           className="w-full border px-3 py-2 rounded"
           value={nascimento}
-          onChange={(e) => setNascimento(e.target.value)}
+          onChange={(e) => setNascimento(e.target.value)} // "yyyy-mm-dd"
         />
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm">Telefone</label>
+        <label className="text-sm" htmlFor="telefone">Telefone</label>
         <input
+          id="telefone"
+          name="telefone"
           className="w-full border px-3 py-2 rounded"
           value={telefone}
           onChange={(e) => setTelefone(e.target.value)}
@@ -92,8 +100,10 @@ export default function PacienteForm() {
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm">E-mail (opcional)</label>
+        <label className="text-sm" htmlFor="email">E-mail (opcional)</label>
         <input
+          id="email"
+          name="email"
           type="email"
           className="w-full border px-3 py-2 rounded"
           value={email}

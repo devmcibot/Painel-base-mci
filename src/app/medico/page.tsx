@@ -10,29 +10,24 @@ export default async function MedicoHome() {
 
   return (
     <>
-      {/* Topo fixo em todas as páginas do médico */}
       <Topbar />
 
       <main className="max-w-5xl mx-auto p-6 space-y-6">
         <h1 className="text-xl font-semibold">Painel do Médico</h1>
 
         {!medicoId ? (
-          <p className="text-gray-600">
-            Este usuário não está vinculado a um médico.
-          </p>
+          <p className="text-gray-600">Este usuário não está vinculado a um médico.</p>
         ) : (
           <ul className="list-disc pl-5 space-y-2">
             <li>
-              <Link href="/medico/pacientes" className="underline">
-                Pacientes
-              </Link>
+              <Link href="/medico/pacientes" className="underline">Pacientes</Link>
             </li>
-            {/* Próximas rotas futuras */}
-            {/* <li>
-              <Link href="/medico/agenda" className="underline">
-                Agenda / Consultas
-              </Link>
-            </li> */}
+            <li>
+              <Link href="/medico/consultas" className="underline">Consultas</Link>
+            </li>
+            <li>
+              <Link href="/medico/consultas/novo" className="underline">Nova consulta</Link>
+            </li>
           </ul>
         )}
       </main>

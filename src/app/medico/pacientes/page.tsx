@@ -1,4 +1,3 @@
-// src/app/medico/pacientes/page.tsx
 import Link from "next/link";
 import Topbar from "@/components/Topbar";
 import { getServerSession } from "next-auth";
@@ -11,14 +10,15 @@ type PacienteItem = {
   cpf: string;
   email: string | null;
   telefone: string | null;
-  nascimento: string | null; // virá ISO da API
+  nascimento: string | null; // ISO
 };
 
-function fmtBrDate(iso?: string | null) {
-  if (!iso) return "-";
+// aceita ISO completo ou "yyyy-mm-dd"
+function fmtBrDate(val?: string | null) {
+  if (!val) return "-";
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(val) ? `${val}T12:00:00` : val;
   const d = new Date(iso);
-  if (isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString("pt-BR");
+  return isNaN(d.getTime()) ? "-" : d.toLocaleDateString("pt-BR");
 }
 
 export default async function PacientesPage() {
@@ -29,6 +29,13 @@ export default async function PacientesPage() {
     <>
       <Topbar />
       <main className="max-w-5xl mx-auto p-6 space-y-6">
+        {/* VOLTAR para a Home do médico */}
+        <div className="mb-2">
+          <Link href="/medico" className="underline">
+            &larr; Voltar
+          </Link>
+        </div>
+
         <h1 className="text-xl font-semibold">Pacientes</h1>
 
         {!medicoId ? (
@@ -43,7 +50,6 @@ export default async function PacientesPage() {
 
 async function PacientesTable({ medicoId }: { medicoId: number }) {
   const base = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
-
   // encaminha cookies para a rota /api
   const hdrs = await headers();
   const cookie = hdrs.get("cookie") ?? "";
@@ -54,11 +60,7 @@ async function PacientesTable({ medicoId }: { medicoId: number }) {
   });
 
   if (!res.ok) {
-    return (
-      <p className="text-red-600">
-        Erro ao carregar pacientes (HTTP {res.status}).
-      </p>
-    );
+    return <p className="text-red-600">Erro ao carregar pacientes (HTTP {res.status}).</p>;
   }
 
   const items = (await res.json()) as PacienteItem[];
@@ -83,13 +85,14 @@ async function PacientesTable({ medicoId }: { medicoId: number }) {
             <th className="border px-2 py-1 text-left">Nascimento</th>
             <th className="border px-2 py-1 text-left">Telefone</th>
             <th className="border px-2 py-1 text-left">E-mail</th>
+            <th className="border px-2 py-1 text-left">Ações</th>
           </tr>
         </thead>
 
         {items.length === 0 ? (
           <tbody>
             <tr>
-              <td className="border px-2 py-3 text-center" colSpan={6}>
+              <td className="border px-2 py-3 text-center" colSpan={7}>
                 Nenhum paciente cadastrado para este médico.
               </td>
             </tr>
@@ -104,6 +107,11 @@ async function PacientesTable({ medicoId }: { medicoId: number }) {
                 <td className="border px-2 py-1">{fmtBrDate(p.nascimento)}</td>
                 <td className="border px-2 py-1">{p.telefone ?? "-"}</td>
                 <td className="border px-2 py-1">{p.email ?? "-"}</td>
+                <td className="border px-2 py-1">
+                  <Link href={`/medico/pacientes/${p.id}`} className="underline">
+                    editar
+                  </Link>
+                </td>
               </tr>
             ))}
           </tbody>

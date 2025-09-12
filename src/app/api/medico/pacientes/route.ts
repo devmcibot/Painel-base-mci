@@ -1,37 +1,78 @@
 import { NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { prisma } from "@/lib/prisma";
 
+export const dynamic = "force-dynamic";
+
+// Lista pacientes do médico logado (ou por query medicoId)
 export async function GET(req: Request) {
-  try {
+  const { searchParams } = new URL(req.url);
+  const medicoIdParam = searchParams.get("medicoId");
+  let medicoId: number | null = medicoIdParam ? Number(medicoIdParam) : null;
+
+  if (!medicoId) {
     const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const role   = (session.user as any)?.role as "ADMIN" | "MEDICO";
-    const sMedId = (session.user as any)?.medicoId as number | null;
-
-    const url = new URL(req.url);
-    const qpMedId = url.searchParams.get("medicoId");
-    const qpMedIdNum = qpMedId ? Number(qpMedId) : null;
-
-    let medicoIdParaBuscar: number | null = null;
-    if (role === "MEDICO") {
-      if (!sMedId) return NextResponse.json({ error: "Sem vínculo de médico" }, { status: 403 });
-      medicoIdParaBuscar = sMedId;
-    } else if (role === "ADMIN") {
-      medicoIdParaBuscar = qpMedIdNum ?? null;
-    }
-
-    const pacientes = await prisma.paciente.findMany({
-      where: medicoIdParaBuscar ? { medicoId: medicoIdParaBuscar } : undefined,
-      select: { id: true, nome: true, cpf: true, email: true, telefone: true, nascimento: true },
-      orderBy: { id: "asc" },
-    });
-
-    return NextResponse.json(pacientes);
-  } catch (err) {
-    console.error("GET /api/medico/pacientes error:", err);
-    return NextResponse.json({ error: "Internal error" }, { status: 500 });
+    medicoId = (session?.user as any)?.medicoId ?? null;
   }
+  if (!medicoId) {
+    return NextResponse.json({ error: "Sem médico vinculado" }, { status: 401 });
+  }
+
+  const items = await prisma.paciente.findMany({
+    where: { medicoId },
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      nome: true,
+      cpf: true,
+      email: true,
+      telefone: true,
+      nascimento: true, // <= IMPORTANTE
+    },
+  });
+
+  return NextResponse.json(items);
+}
+
+// Cria paciente
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  const medicoId = (session?.user as any)?.medicoId ?? null;
+  if (!medicoId) {
+    return NextResponse.json({ error: "Sem médico vinculado" }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const { nome, cpf, email, telefone, nascimento } = body as {
+    nome: string;
+    cpf: string;
+    email?: string | null;
+    telefone?: string | null;
+    nascimento?: string | null; // formato "yyyy-mm-dd"
+  };
+
+  if (!nome || !cpf) {
+    return NextResponse.json({ error: "Nome e CPF são obrigatórios" }, { status: 400 });
+  }
+
+  // Converte "yyyy-mm-dd" para Date (evita timezone mudando o dia)
+  const nascDate =
+    nascimento && nascimento.trim()
+      ? new Date(`${nascimento}T12:00:00`) // meio-dia local evita “voltar 1 dia”
+      : null;
+
+  const novo = await prisma.paciente.create({
+    data: {
+      medicoId,
+      nome,
+      cpf,
+      email: email?.trim() || null,
+      telefone: telefone?.trim() || null,
+      nascimento: nascDate, // <= SALVANDO
+    },
+    select: { id: true },
+  });
+
+  return NextResponse.json(novo, { status: 201 });
 }
