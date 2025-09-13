@@ -1,15 +1,17 @@
+// src/app/api/medico/pacientes/novo/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { ensureFolder, patientFolderPath } from "@/lib/storage";
+
+export const dynamic = "force-dynamic";
 
 function parseBrDate(d?: string | null): Date | null {
   if (!d) return null;
-  // aceita "dd/mm/aaaa"
   const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d.trim());
   if (!m) return null;
   const [_, dd, mm, yyyy] = m;
-  // mês = 0..11
   const dt = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
   return isNaN(dt.getTime()) ? null : dt;
 }
@@ -26,18 +28,17 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const {
-      nome,
-      cpf,
-      telefone,
-      email,
-      nascimento,        // string "dd/mm/aaaa" (opcional)
-    } = body as {
-      nome: string; cpf: string; telefone?: string | null; email?: string | null; nascimento?: string | null;
+    const { nome, cpf, telefone, email, nascimento } = body as {
+      nome: string;
+      cpf: string;
+      telefone?: string | null;
+      email?: string | null;
+      nascimento?: string | null; // "dd/mm/aaaa"
     };
 
     const nasc = parseBrDate(nascimento);
 
+    // 1) cria no banco
     const novo = await prisma.paciente.create({
       data: {
         medicoId,
@@ -45,14 +46,27 @@ export async function POST(req: Request) {
         cpf: cpf.trim(),
         telefone: telefone?.trim() || null,
         email: email?.trim() || null,
-        nascimento: nasc,   // Date | null
+        nascimento: nasc,
       },
-      select: { id: true },
+      select: { id: true, nome: true, cpf: true }, // já traz pra montar a pasta
     });
 
-    return NextResponse.json(novo, { status: 201 });
+    // 2) monta o caminho determinístico da pasta do paciente
+    const folder = patientFolderPath({
+      medicoId,
+      pacienteId: novo.id,
+      nome: novo.nome,
+      cpf: novo.cpf,
+    });
+
+    // 3) materializa a pasta no Storage (subindo .keep)
+    await ensureFolder(folder);
+
+    // (opcional) se tiver `pastaPath` no schema:
+    // await prisma.paciente.update({ where: { id: novo.id }, data: { pastaPath: folder } });
+
+    return NextResponse.json({ id: novo.id, pastaPath: folder }, { status: 201 });
   } catch (e: any) {
-    // CPF duplicado (unique)
     if (e?.code === "P2002") {
       return NextResponse.json({ error: "CPF já cadastrado" }, { status: 409 });
     }

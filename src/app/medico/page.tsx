@@ -28,6 +28,9 @@ export default async function MedicoHome() {
             <li>
               <Link href="/medico/consultas/novo" className="underline">Nova consulta</Link>
             </li>
+              <li><Link href="/medico/arquivo" className= "underline">Arquivos</Link>
+            </li>
+
           </ul>
         )}
       </main>
