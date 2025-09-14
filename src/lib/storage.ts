@@ -113,3 +113,42 @@ export async function ensureConsultaFolder(opts: {
   await ensureFolder(folder);
   return folder;
 }
+
+// === Gerar base indexada: anamnese_{slug}_{last4}_{NN} ===
+
+/** Varre a pasta e devolve o próximo índice livre para um "basename" */
+export async function nextIndexedBasename(
+  dir: string,
+  base: string
+): Promise<string> {
+  // lista tudo da pasta
+  const { data, error } = await supabaseAdmin
+    .storage
+    .from(BUCKET)
+    .list(dir, { limit: 1000 }); // suficiente p/ sessão
+
+  if (error) throw error;
+
+  let max = 0;
+  for (const it of data ?? []) {
+    // procura arquivos que começam com `${base}_NN.`
+    const m = it.name.match(new RegExp(`^${base}_(\\d+)\\.`));
+    if (m) {
+      const n = parseInt(m[1], 10);
+      if (!Number.isNaN(n) && n > max) max = n;
+    }
+  }
+
+  const next = String(max + 1).padStart(2, "0");
+  return `${base}_${next}`;
+}
+
+/** Próximo "basename" para anamnese dentro de uma pasta de consulta */
+export async function nextAnamneseBasename(
+  folder: string,
+  pacienteNome: string,
+  pacienteCpf?: string | null
+): Promise<string> {
+  const base = `anamnese_${slugifyNome(pacienteNome)}_${cpfLast4(pacienteCpf)}`;
+  return nextIndexedBasename(folder, base);
+}

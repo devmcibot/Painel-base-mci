@@ -30,6 +30,9 @@ export default async function MedicoHome() {
             </li>
               <li><Link href="/medico/arquivo" className= "underline">Arquivos</Link>
             </li>
+             <li><Link href="/medico/anamnese" className="underline">Anamnese</Link>
+            </li>
+
 
           </ul>
         )}
