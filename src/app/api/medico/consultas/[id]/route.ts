@@ -1,37 +1,188 @@
-import { NextResponse } from "next/server";
+// src/app/api/medico/consultas/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
+import { addMinutes, rangesOverlap } from "@/lib/datetime";
+import { isWithinAvailability, getBusy } from "@/lib/calendar";
 
 export const dynamic = "force-dynamic";
 
+type PatchBody = {
+  data?: string;                          // ISO (UTC)
+  status?: "ABERTA" | "CONCLUIDA" | "CANCELADA" | "FALTOU" | "REMARCADA";
+  pastaPath?: string | null;
+  preAnamnesePath?: string | null;
+  audioPath?: string | null;
+  anamnesePath?: string | null;
+  relatorioPath?: string | null;
+};
+
+/* GET /api/medico/consultas/[id] */
 export async function GET(
-  _req: Request,
+  _req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const id = Number(params.id);
-  const c = await prisma.consulta.findUnique({
-    where: { id },
-    include: { paciente: true },
-  });
-  if (!c) return NextResponse.json({ error: "Não encontrada" }, { status: 404 });
-  return NextResponse.json(c);
+  try {
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    if (!session || !medicoId) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const id = Number(params.id);
+    const c = await prisma.consulta.findFirst({
+      where: { id, medicoId },
+      include: { paciente: true },
+    });
+
+    if (!c) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+
+    return NextResponse.json(c);
+  } catch (e) {
+    console.error("[consultas.id][GET]", e);
+    return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
+  }
 }
 
+/* PATCH /api/medico/consultas/[id]
+   - Atualiza data/status/paths da consulta
+   - Garante/atualiza o evento de agenda (30 min)
+   - Faz validações de disponibilidade/conflito
+*/
 export async function PATCH(
-  req: Request,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const id = Number(params.id);
-  const body = await req.json();
+  try {
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    if (!session || !medicoId) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
 
-  const data: any = {};
-  if (body.data) data.data = new Date(body.data);
-  if (body.status) data.status = body.status; // "ABERTA" | "CONCLUIDA" | "CANCELADA" | "FALTOU" | "REMARCADA"
+    const id = Number(params.id);
+    const body = (await req.json()) as PatchBody;
 
-  // paths opcionais (se vierem)
-  ["pastaPath","preAnamnesePath","audioPath","anamnesePath","relatorioPath"].forEach((k) => {
-    if (k in body) data[k] = body[k] ?? null;
-  });
+    const current = await prisma.consulta.findFirst({
+      where: { id, medicoId },
+      select: { id: true, data: true, pacienteId: true },
+    });
+    if (!current) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
 
-  const up = await prisma.consulta.update({ where: { id }, data });
-  return NextResponse.json(up);
+    const nextStart = body.data ? new Date(body.data) : current.data;
+    const nextEnd = addMinutes(nextStart, 30);
+
+    // valida janelas do médico
+    const avail = await isWithinAvailability(medicoId, nextStart, nextEnd);
+    if (!avail.ok) {
+      return NextResponse.json(
+        { error: "CONFLICT", reasons: [avail.reason] },
+        { status: 409 }
+      );
+    }
+
+    // conflito com outros eventos/ausências (ignorando o próprio evento da consulta)
+    const busy = await getBusy(medicoId, nextStart, nextEnd);
+    const ownEvent = await prisma.agendaEvento.findFirst({
+      where: { consultaId: id },
+      select: { id: true },
+    });
+
+    const hasClash = busy.some((b) => {
+      const bi = new Date(b.inicio);
+      const bf = new Date(b.fim);
+      const overlaps = rangesOverlap(nextStart, nextEnd, bi, bf);
+      const isSelf = b.origem === "evento" && typeof b.refId === "number" && b.refId === ownEvent?.id;
+      return overlaps && !isSelf;
+    });
+
+    if (hasClash) {
+      return NextResponse.json(
+        { error: "CONFLICT", reasons: ["overlap_busy"] },
+        { status: 409 }
+      );
+    }
+
+    // monta payload de update da consulta
+    const dataUpdate: any = {};
+    if (body.status) dataUpdate.status = body.status;
+    if (body.data) dataUpdate.data = nextStart;
+    ["pastaPath","preAnamnesePath","audioPath","anamnesePath","relatorioPath"].forEach((k) => {
+      if (k in body) dataUpdate[k] = (body as any)[k] ?? null;
+    });
+
+    const updated = await prisma.$transaction(async (tx) => {
+      // atualiza consulta
+      const up = await tx.consulta.update({ where: { id }, data: dataUpdate });
+
+      // garante/atualiza evento da agenda
+      const ev = await tx.agendaEvento.findFirst({
+        where: { consultaId: id },
+      });
+
+      const pac = await tx.paciente.findUnique({
+        where: { id: current.pacienteId },
+        select: { nome: true },
+      });
+      const titulo = `Consulta — ${pac?.nome ?? "Paciente"}`;
+
+      if (ev) {
+        await tx.agendaEvento.update({
+          where: { id: ev.id },
+          data: { titulo, inicio: nextStart, fim: nextEnd },
+        });
+      } else {
+        await tx.agendaEvento.create({
+          data: {
+            medicoId,
+            pacienteId: current.pacienteId,
+            consultaId: id,
+            titulo,
+            inicio: nextStart,
+            fim: nextEnd,
+            origem: "manual",
+          },
+        });
+      }
+
+      return up;
+    });
+
+    return NextResponse.json(updated, { status: 200 });
+  } catch (e) {
+    console.error("[consultas.id][PATCH]", e);
+    return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
+  }
+}
+
+/* DELETE /api/medico/consultas/[id]
+   - Apaga a consulta e o evento de agenda vinculado (se houver)
+*/
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    if (!session || !medicoId) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const id = Number(params.id);
+    const c = await prisma.consulta.findFirst({ where: { id, medicoId } });
+    if (!c) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
+
+    await prisma.$transaction(async (tx) => {
+      const ev = await tx.agendaEvento.findFirst({ where: { consultaId: id } });
+      if (ev) await tx.agendaEvento.delete({ where: { id: ev.id } });
+      await tx.consulta.delete({ where: { id } });
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  } catch (e) {
+    console.error("[consultas.id][DELETE]", e);
+    return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
+  }
 }
