@@ -1,3 +1,4 @@
+// src/app/medico/anamnese/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -31,6 +32,8 @@ export default function AnamnesePage() {
   const [pacientes, setPacientes] = useState<PacienteItem[]>([]);
   const [pacienteId, setPacienteId] = useState<number | "">("");
   const [consultaId, setConsultaId] = useState<number | "">("");
+  const [loading, setLoading] = useState(true);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
 
   /** Deriva consultas do paciente */
   const consultasDoPaciente = useMemo(
@@ -58,33 +61,52 @@ export default function AnamnesePage() {
   const recStateRef = useRef(recState);
   useEffect(() => { recStateRef.current = recState; }, [recState]);
 
-  /** Carrega dados mínimos */
+  /** Carrega dados mínimos — usa GET /api/medico/consultas */
   useEffect(() => {
     const load = async () => {
-      const res = await fetch("/api/medico/consultas", { cache: "no-store" });
-      const list = (await res.json()) as any[];
-
-      const cons: ConsultaItem[] = list.map((c) => ({
-        id: c.id,
-        data: c.data, // ISO
-        pastaPath: c.pastaPath ?? null,
-        pacienteId: c.paciente.id,
-        pacienteNome: c.paciente.nome,
-        pacienteCpf: c.paciente.cpf ?? null,
-      }));
-      setConsultas(cons);
-
-      const mapa = new Map<number, PacienteItem>();
-      cons.forEach((c) => {
-        if (!mapa.has(c.pacienteId)) {
-          mapa.set(c.pacienteId, {
-            id: c.pacienteId,
-            nome: c.pacienteNome,
-            cpf: c.pacienteCpf,
-          });
+      try {
+        setLoading(true);
+        setErrMsg(null);
+        const res = await fetch("/api/medico/consultas", { cache: "no-store" });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j?.error || `Falha ${res.status}`);
         }
-      });
-      setPacientes(Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome)));
+        const list = (await res.json()) as Array<{
+          id: number;
+          data: string;
+          pastaPath: string | null;
+          paciente: { id: number; nome: string; cpf: string | null };
+        }>;
+
+        const cons: ConsultaItem[] = list.map((c) => ({
+          id: c.id,
+          data: c.data, // ISO
+          pastaPath: c.pastaPath ?? null,
+          pacienteId: c.paciente.id,
+          pacienteNome: c.paciente.nome,
+          pacienteCpf: c.paciente.cpf ?? null,
+        }));
+        setConsultas(cons);
+
+        // Deriva pacientes a partir das consultas
+        const mapa = new Map<number, PacienteItem>();
+        cons.forEach((c) => {
+          if (!mapa.has(c.pacienteId)) {
+            mapa.set(c.pacienteId, {
+              id: c.pacienteId,
+              nome: c.pacienteNome,
+              cpf: c.pacienteCpf,
+            });
+          }
+        });
+        setPacientes(Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome)));
+      } catch (e: any) {
+        console.error(e);
+        setErrMsg(e?.message || "Falha ao carregar consultas.");
+      } finally {
+        setLoading(false);
+      }
     };
     load();
   }, []);
@@ -303,6 +325,9 @@ export default function AnamnesePage() {
 
       <h1 className="text-xl font-semibold">Anamnese</h1>
 
+      {loading && <p>Carregando…</p>}
+      {errMsg && <p className="text-red-600">Erro: {errMsg}</p>}
+
       {/* Paciente */}
       <div className="space-y-2">
         <label className="text-sm">Paciente</label>
@@ -310,6 +335,7 @@ export default function AnamnesePage() {
           className="w-full border rounded px-3 py-2"
           value={pacienteId}
           onChange={(e) => setPacienteId(e.target.value ? Number(e.target.value) : "")}
+          disabled={loading || !!errMsg}
         >
           <option value="">— selecione um paciente —</option>
           {pacientes.map((p) => (
@@ -327,7 +353,7 @@ export default function AnamnesePage() {
           className="w-full border rounded px-3 py-2"
           value={consultaId}
           onChange={(e) => setConsultaId(e.target.value ? Number(e.target.value) : "")}
-          disabled={!pacienteId}
+          disabled={!pacienteId || loading || !!errMsg}
         >
           <option value="">— selecione um paciente primeiro —</option>
           {consultasDoPaciente.map((c) => (
@@ -341,7 +367,7 @@ export default function AnamnesePage() {
         ) : (
           consultaId && (
             <p className="text-xs text-amber-700">
-              (Esta consulta ainda não tem pasta. Crie a consulta pela listagem padrão.)
+              (Esta consulta ainda não tem pasta. Crie a consulta pela Agenda.)
             </p>
           )
         )}

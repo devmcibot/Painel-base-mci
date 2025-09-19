@@ -1,67 +1,65 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
+import { supabaseAdmin } from "@/lib/supabase";
+import { patientFolderPath } from "@/lib/storage";
 
-export const dynamic = "force-dynamic";
+const BUCKET = process.env.SUPABASE_BUCKET!;
 
-// Detalhe do paciente (garantindo que pertence ao médico logado)
-export async function GET(_req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  const medicoId = (session?.user as any)?.medicoId ?? null;
-  if (!medicoId) return NextResponse.json({ error: "Sem médico vinculado" }, { status: 401 });
-
-  const id = Number(params.id);
-  if (!id) return NextResponse.json({ error: "ID inválido" }, { status: 400 });
-
-  const pac = await prisma.paciente.findFirst({
-    where: { id, medicoId },
-    select: { id: true, nome: true, cpf: true, email: true, telefone: true, nascimento: true },
-  });
-
-  if (!pac) return NextResponse.json({ error: "Paciente não encontrado" }, { status: 404 });
-  return NextResponse.json(pac);
+async function removeFolderRecursive(prefix: string) {
+  const s = supabaseAdmin.storage.from(BUCKET);
+  // DFS simples
+  const stack = [prefix];
+  const toDelete: string[] = [];
+  while (stack.length) {
+    const dir = stack.pop()!;
+    const { data, error } = await s.list(dir, { limit: 1000 });
+    if (error) throw error;
+    for (const it of data ?? []) {
+      const full = `${dir}/${it.name}`;
+      // arquivos têm "id" definido; pastas não (metadata === null)
+      if ((it as any).id) toDelete.push(full);
+      else stack.push(full);
+    }
+  }
+  if (toDelete.length) await s.remove(toDelete);
+  // tenta remover .keep se existir
+  await s.remove([`${prefix}/.keep`]).catch(() => {});
 }
 
-// Editar paciente
-export async function PATCH(req: Request, { params }: { params: { id: string } }) {
-  const session = await getServerSession(authOptions);
-  const medicoId = (session?.user as any)?.medicoId ?? null;
-  if (!medicoId) return NextResponse.json({ error: "Sem médico vinculado" }, { status: 401 });
-
-  const id = Number(params.id);
-  if (!id) return NextResponse.json({ error: "ID inválido" }, { status: 400 });
-
-  const exists = await prisma.paciente.findFirst({ where: { id, medicoId }, select: { id: true } });
-  if (!exists) return NextResponse.json({ error: "Paciente não encontrado" }, { status: 404 });
-
-  const body = await req.json();
-  const { nome, cpf, email, telefone, nascimento } = body as {
-    nome?: string;
-    cpf?: string;
-    email?: string | null;
-    telefone?: string | null;
-    nascimento?: string | null; // "yyyy-mm-dd" ou null
-  };
-
-  const data: any = {};
-  if (nome !== undefined) data.nome = String(nome);
-  if (cpf !== undefined) data.cpf = String(cpf);
-  if (email !== undefined) data.email = email?.trim() || null;
-  if (telefone !== undefined) data.telefone = telefone?.trim() || null;
-  if (nascimento !== undefined) {
-    data.nascimento = nascimento ? new Date(`${nascimento}T12:00:00`) : null;
-  }
-
+export async function DELETE(_: Request, { params }: { params: { id: string } }) {
   try {
-    await prisma.paciente.update({ where: { id }, data });
-    return NextResponse.json({ ok: true });
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | null;
+    if (!medicoId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const id = Number(params.id);
+    if (!id || Number.isNaN(id)) return NextResponse.json({ error: "Bad id" }, { status: 400 });
+
+    const p = await prisma.paciente.findFirst({
+      where: { id, medicoId },
+      select: { id: true, nome: true, cpf: true },
+    });
+    if (!p) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    // apaga arquivos/pasta
+    const folder = patientFolderPath({
+      medicoId,
+      pacienteId: p.id,
+      nome: p.nome,
+      cpf: p.cpf,
+    });
+    await removeFolderRecursive(folder).catch((e) => {
+      console.warn("removeFolderRecursive error (ignorado):", e?.message ?? e);
+    });
+
+    // apaga do banco (cascata dos relacionamentos deve estar no schema)
+    await prisma.paciente.delete({ where: { id } });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
-    // CPF duplicado, etc.
-    if (e?.code === "P2002") {
-      return NextResponse.json({ error: "CPF já cadastrado." }, { status: 409 });
-    }
-    console.error("PATCH paciente error:", e);
-    return NextResponse.json({ error: "Erro ao atualizar." }, { status: 500 });
+    console.error("DELETE paciente error:", e);
+    return NextResponse.json({ error: "Internal error" }, { status: 500 });
   }
 }

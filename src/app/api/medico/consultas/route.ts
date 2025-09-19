@@ -1,30 +1,17 @@
 // src/app/api/medico/consultas/route.ts
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { ensureConsultaFolder } from "@/lib/storage";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
-// Lista SOMENTE as consultas do médico logado
+/**
+ * GET /api/medico/consultas
+ * Lista SOMENTE as consultas do médico logado, já incluindo paciente
+ * e os campos que a tela de Anamnese usa.
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const medicoId = (session?.user as any)?.medicoId ?? null;
-  if (!medicoId) {
-    return NextResponse.json({ error: "Sem médico vinculado" }, { status: 401 });
-  }
-
-  const consultas = await prisma.consulta.findMany({
-    where: { medicoId },
-    orderBy: { data: "desc" },
-    include: { paciente: true },
-  });
-
-  return NextResponse.json(consultas);
-}
-
-export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const medicoId = (session?.user as any)?.medicoId ?? null;
@@ -32,43 +19,36 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Sem médico vinculado" }, { status: 401 });
     }
 
-    const { pacienteId, data } = await req.json();
-    if (!pacienteId || !data) {
-      return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
-    }
-
-    // 1) cria a consulta e já traz dados do paciente para montar o caminho
-    const criada = await prisma.consulta.create({
-      data: {
-        medicoId,
-        pacienteId: Number(pacienteId),
-        data: new Date(data), // ISO -> Date
-        // status usa o default "ABERTA"
-      },
+    const consultas = await prisma.consulta.findMany({
+      where: { medicoId },
+      orderBy: { data: "desc" },
       include: {
         paciente: { select: { id: true, nome: true, cpf: true } },
       },
     });
 
-    // 2) cria a subpasta no Storage (bucket privado)
-    const folder = await ensureConsultaFolder({
-      medicoId,
-      pacienteId: criada.paciente.id,
-      nome: criada.paciente.nome,
-      cpf: criada.paciente.cpf,
-      consultaId: criada.id,
-      data: criada.data,
-    });
+    // Retorna só o que a Anamnese consome
+    const payload = consultas.map((c) => ({
+      id: c.id,
+      data: c.data.toISOString(),
+      pastaPath: c.pastaPath, // pode ser null
+      paciente: {
+        id: c.paciente.id,
+        nome: c.paciente.nome,
+        cpf: c.paciente.cpf,
+      },
+    }));
 
-    // 3) indexa o caminho na tabela (recomendado)
-    await prisma.consulta.update({
-      where: { id: criada.id },
-      data: { pastaPath: folder },
-    });
-
-    return NextResponse.json({ id: criada.id, pastaPath: folder }, { status: 201 });
+    return NextResponse.json(payload, { status: 200 });
   } catch (e) {
-    console.error("POST /api/medico/consultas error:", e);
-    return NextResponse.json({ error: "Falha ao criar consulta" }, { status: 500 });
+    console.error("GET /api/medico/consultas error:", e);
+    return NextResponse.json({ error: "Falha ao listar" }, { status: 500 });
   }
 }
+
+/* 
+// Se você NÃO usa esta rota para criar (porque já cria pela Agenda), pode remover o POST.
+// Deixo aqui só como referência, comentado:
+//
+// export async function POST(req: Request) { ... }
+*/

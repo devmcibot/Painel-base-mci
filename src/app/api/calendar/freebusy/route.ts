@@ -1,47 +1,44 @@
+// src/app/api/calendar/freebusy/route.ts
 import { NextRequest, NextResponse } from "next/server";
-import { isWithinAvailability, getBusy } from "@/src/lib/calendar";
-import { rangesOverlap, toDate } from "@/src/lib/datetime";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const medicoId = Number(body.medicoId);
-    const inicio = toDate(body.start);
-    const fim = toDate(body.end);
-
-    if (!medicoId || !(inicio instanceof Date) || !(fim instanceof Date)) {
-      return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    if (!session || !medicoId) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
-    // 1) Fora do horário de atendimento?
-    const avail = await isWithinAvailability(medicoId, inicio, fim);
-    if (!avail.ok) {
-      return NextResponse.json(
-        {
-          conflict: true,
-          reasons: [avail.reason], // ex.: "outside_hours" | "crosses_midnight" | "in_absence"
-          busy: [],
-        },
-        { status: 200 }
-      );
-    }
+    const body = await req.json() as { start: string; end: string; };
+    const ignoreEventId = Number(new URL(req.url).searchParams.get("ignoreEventId") || "0") || null;
 
-    // 2) Sobreposição com eventos/ausências?
-    const busy = await getBusy(medicoId, inicio, fim);
-    const overlap = busy.some(b => rangesOverlap(inicio, fim, b.inicio, b.fim));
+    const start = new Date(body.start);
+    const end   = new Date(body.end);
 
-    return NextResponse.json(
-      {
-        conflict: overlap,
-        reasons: overlap ? ["overlap_busy"] : [],
-        busy,
+    // ... busque eventos e ausências COMO JÁ FAZIA ...
+    const events = await prisma.agendaEvento.findMany({
+      where: {
+        medicoId,
+        fim: { gt: start },
+        inicio: { lt: end },
       },
-      { status: 200 }
-    );
+      select: { id: true, inicio: true, fim: true },
+      orderBy: { inicio: "asc" },
+    });
+
+    // 👉 filtra fora o próprio evento, se pedido
+    const filtered = ignoreEventId
+      ? events.filter(e => e.id !== ignoreEventId)
+      : events;
+
+    return NextResponse.json({ busy: filtered }, { status: 200 });
   } catch (e) {
-    console.error("[freebusy][POST]", e);
+    console.error("[calendar/freebusy][POST]", e);
     return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
   }
 }

@@ -1,22 +1,25 @@
-import { NextRequest, NextResponse } from "next/server";
+// src/app/api/calendar/events/route.ts
+import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { prisma } from "@/src/lib/prisma";
-import { isWithinAvailability, getBusy } from "@/src/lib/calendar";
-import { rangesOverlap, toDate } from "@/src/lib/datetime";
+import { prisma } from "@/lib/prisma";
+import { toDate } from "@/lib/datetime";
+import { isWithinAvailability, getBusy } from "@/lib/calendar";
+import { rangesOverlap } from "@/lib/datetime";
+import { ensureConsultaFolder } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-type PostBody = {
-  medicoId: number;
+type Body = {
   pacienteId: number;
-  titulo: string;
+  titulo?: string;
   inicio: string; // ISO
   fim: string;    // ISO
-  origem?: string;
+  origem?: "manual" | "whatsapp" | "n8n";
 };
 
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
     const medicoId = (session?.user as any)?.medicoId as number | undefined;
@@ -24,90 +27,80 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const body = (await req.json()) as PostBody;
-
-    // segurança: médico só cria para si
-    if (body.medicoId !== medicoId) {
-      return NextResponse.json({ error: "FORBIDDEN" }, { status: 403 });
-    }
-
+    const body = (await req.json()) as Body;
+    const pacienteId = Number(body.pacienteId);
     const inicio = toDate(body.inicio);
     const fim = toDate(body.fim);
-    if (!(inicio < fim)) {
-      return NextResponse.json({ error: "HORARIO_INVALIDO" }, { status: 400 });
+    const origem = body.origem ?? "manual";
+
+    if (!pacienteId || !(inicio < fim)) {
+      return NextResponse.json({ error: "BAD_REQUEST" }, { status: 400 });
     }
 
-    // paciente pertence ao médico?
-    const paciente = await prisma.paciente.findFirst({
-      where: { id: body.pacienteId, medicoId },
-      select: { id: true },
-    });
-    if (!paciente) {
-      return NextResponse.json({ error: "PACIENTE_INVALIDO" }, { status: 400 });
-    }
-
-    // disponibilidade (horário do médico)
+    // 1) valida disponibilidade
     const avail = await isWithinAvailability(medicoId, inicio, fim);
     if (!avail.ok) {
-      return NextResponse.json(
-        { conflict: true, reasons: [avail.reason] },
-        { status: 409 }
-      );
+      return NextResponse.json({ conflict: true, reasons: [avail.reason] }, { status: 409 });
     }
 
-    // conflitos com eventos/ausências existentes
+    // 2) conflito com outros eventos/ausências
     const busy = await getBusy(medicoId, inicio, fim);
-    const overlap = busy.some(b => rangesOverlap(inicio, fim, b.inicio, b.fim));
-    if (overlap) {
-      return NextResponse.json(
-        {
-          conflict: true,
-          reasons: ["overlap_busy"],
-          busy: busy.map(b => ({
-            inicio: b.inicio.toISOString(),
-            fim: b.fim.toISOString(),
-            origem: b.origem,
-            refId: b.refId
-          })),
-        },
-        { status: 409 }
-      );
+    const hasClash = busy.some(b => rangesOverlap(inicio, fim, toDate(b.inicio), toDate(b.fim)));
+    if (hasClash) {
+      return NextResponse.json({ conflict: true, reasons: ["overlap_busy"] }, { status: 409 });
     }
 
-    // cria Consulta + Evento em transação
-    const created = await prisma.$transaction(async (tx) => {
-      const consulta = await tx.consulta.create({
+    // 3) valida paciente pertence ao médico
+    const paciente = await prisma.paciente.findFirst({
+      where: { id: pacienteId, medicoId },
+      select: { id: true, nome: true, cpf: true },
+    });
+    if (!paciente) {
+      return NextResponse.json({ error: "PACIENTE_NAO_ENCONTRADO" }, { status: 404 });
+    }
+
+    // 4) cria consulta + evento
+    const { consultaId, eventoId } = await prisma.$transaction(async (tx) => {
+      const c = await tx.consulta.create({
+        data: { medicoId, pacienteId, data: inicio, status: "ABERTA" },
+        select: { id: true },
+      });
+
+      const ev = await tx.agendaEvento.create({
         data: {
           medicoId,
-          pacienteId: body.pacienteId,
-          data: inicio,
-          status: "ABERTA",
+          pacienteId,
+          consultaId: c.id,
+          titulo: body.titulo?.trim() || `Consulta — ${paciente.nome}`,
+          inicio,
+          fim,
+          origem,
         },
         select: { id: true },
       });
 
-      const evento = await tx.agendaEvento.create({
-        data: {
-          medicoId,
-          pacienteId: body.pacienteId,
-          consultaId: consulta.id,
-          titulo: body.titulo,
-          inicio,
-          fim,
-          origem: body.origem ?? "manual",
-        },
-        select: { id: true, consultaId: true },
-      });
-
-      return { evento, consulta };
+      return { consultaId: c.id, eventoId: ev.id };
     });
 
-    return NextResponse.json(
-      { id: created.evento.id, consultaId: created.evento.consultaId },
-      { status: 201 }
-    );
+    // 5) materializa subpasta no bucket e salva caminho na consulta
+    const folder = await ensureConsultaFolder({
+      medicoId,
+      pacienteId,
+      nome: paciente.nome,
+      cpf: paciente.cpf ?? null,
+      consultaId,
+      data: inicio,
+    });
+    console.log("[calendar.events][POST] pasta da consulta:", folder);
+
+    await prisma.consulta.update({
+      where: { id: consultaId },
+      data: { pastaPath: folder },
+    });
+
+    return NextResponse.json({ id: eventoId, consultaId, pastaPath: folder }, { status: 201 });
   } catch (e) {
-    console.error("[events][POST]", e);
+    console.error("[calendar.events][POST] error:", e);
     return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
   }
 }

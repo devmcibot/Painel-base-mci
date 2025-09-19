@@ -1,52 +1,62 @@
 // src/lib/agenda-sync.ts
 import { prisma } from "@/lib/prisma";
-import { addMinutes } from "@/src/lib/datetime";
+import { addMinutes } from "@/lib/datetime";
+import { ensureConsultaFolder } from "@/lib/storage";
 
+/**
+ * Garante (ou atualiza) o evento de agenda de uma consulta
+ * e também materializa a pasta dessa consulta no Storage.
+ * - Atualiza consulta.pastaPath se necessário
+ * - Retorna o caminho da pasta
+ */
 export async function ensureEventForConsulta(consultaId: number) {
-  const consulta = await prisma.consulta.findUnique({
+  const c = await prisma.consulta.findUnique({
     where: { id: consultaId },
     include: { paciente: true },
   });
-  if (!consulta) return;
+  if (!c) return null;
 
-  const inicio = new Date(consulta.data);
-  const fim = addMinutes(inicio, 30); // 30 min padrão
-  const titulo = `Consulta — ${consulta.paciente?.nome ?? ""}`.trim();
+  const inicio = new Date(c.data);
+  const fim = addMinutes(inicio, 30);
+  const titulo = `Consulta — ${c.paciente?.nome ?? "Paciente"}`;
 
-  const existing = await prisma.agendaEvento.findFirst({
-    where: { consultaId: consulta.id },
-    select: { id: true },
-  });
-
-  if (existing) {
+  // cria/atualiza evento
+  const ev = await prisma.agendaEvento.findFirst({ where: { consultaId } });
+  if (ev) {
     await prisma.agendaEvento.update({
-      where: { id: existing.id },
-      data: { inicio, fim, titulo, origem: "evento" },
+      where: { id: ev.id },
+      data: { titulo, inicio, fim },
     });
-    return existing.id;
+  } else {
+    await prisma.agendaEvento.create({
+      data: {
+        medicoId: c.medicoId,
+        pacienteId: c.pacienteId,
+        consultaId,
+        titulo,
+        inicio,
+        fim,
+        origem: "manual",
+      },
+    });
   }
 
-  const created = await prisma.agendaEvento.create({
-    data: {
-      medicoId: consulta.medicoId,
-      pacienteId: consulta.pacienteId!,
-      consultaId: consulta.id,
-      titulo,
-      inicio,
-      fim,
-      origem: "evento",
-    },
-    select: { id: true },
+  // cria/garante a pasta da consulta e grava em consulta.pastaPath
+  const folder = await ensureConsultaFolder({
+    medicoId: c.medicoId,
+    pacienteId: c.pacienteId,
+    nome: c.paciente?.nome ?? `paciente_${c.pacienteId}`,
+    cpf: c.paciente?.cpf ?? null,
+    consultaId,
+    data: inicio,
   });
-  return created.id;
-}
 
-export async function deleteEventForConsulta(consultaId: number) {
-  const existing = await prisma.agendaEvento.findFirst({
-    where: { consultaId },
-    select: { id: true },
-  });
-  if (existing) {
-    await prisma.agendaEvento.delete({ where: { id: existing.id } });
+  if (c.pastaPath !== folder) {
+    await prisma.consulta.update({
+      where: { id: consultaId },
+      data: { pastaPath: folder },
+    });
   }
+
+  return folder;
 }
