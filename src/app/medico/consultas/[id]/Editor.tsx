@@ -61,7 +61,7 @@ export default function Editor({
           ))}
         </select>
 
-        <div className="text-xs text-gray-600">
+        <div className="text-xs">
           • <b>CONCLUIDA</b>: paciente atendido<br />
           • <b>FALTOU</b>: não compareceu<br />
           • <b>REMARCADA</b>: reagendada (altere a data)

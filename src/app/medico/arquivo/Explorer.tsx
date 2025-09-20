@@ -172,7 +172,7 @@ export default function Explorer({ pacientes }: { pacientes: PacienteItem[] }) {
               className={`w-full text-left p-2 ${pacienteId === p.id ? "bg-gray-100" : ""}`}
             >
               <div className="font-medium">{p.nome}</div>
-              <div className="text-xs text-gray-500">{p.cpf || "-"}</div>
+              <div className="text-xs">{p.cpf || "-"}</div>
             </button>
           ))}
         </div>
@@ -191,15 +191,15 @@ export default function Explorer({ pacientes }: { pacientes: PacienteItem[] }) {
                   className={`w-full text-left p-2 ${consultaId === c.id ? "bg-gray-100" : ""}`}
                 >
                   <div className="font-medium">#{c.id} • {fmtBr(c.data)}</div>
-                  <div className="text-xs text-gray-500">{c.pastaPath || "(sem pasta)"}</div>
+                  <div className="text-xs ">{c.pastaPath || "(sem pasta)"}</div>
                 </button>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500">Sem consultas para este paciente.</p>
+            <p className="">Sem consultas para este paciente.</p>
           )
         ) : (
-          <p className="text-gray-500">Selecione um paciente.</p>
+          <p className="">Selecione um paciente.</p>
         )}
       </div>
 
@@ -218,11 +218,11 @@ export default function Explorer({ pacientes }: { pacientes: PacienteItem[] }) {
         </div>
 
         {!folderPath ? (
-          <div className="border rounded p-3 text-gray-500">Selecione uma consulta.</div>
+          <div className="border rounded p-3 ">Selecione uma consulta.</div>
         ) : loading ? (
-          <div className="border rounded p-3 text-gray-500">Carregando…</div>
+          <div className="border rounded p-3 ">Carregando…</div>
         ) : entries.length === 0 ? (
-          <div className="border rounded p-3 text-gray-500">Nenhum arquivo.</div>
+          <div className="border rounded p-3 ">Nenhum arquivo.</div>
         ) : (
           <ul className="border rounded divide-y">
             {entries.map((e) => (
@@ -258,7 +258,7 @@ export default function Explorer({ pacientes }: { pacientes: PacienteItem[] }) {
                 )}
 
                 {e.size != null && e.type === "file" && (
-                  <span className="text-xs text-gray-500">{e.size} bytes</span>
+                  <span className="text-xs ">{e.size} bytes</span>
                 )}
               </li>
             ))}

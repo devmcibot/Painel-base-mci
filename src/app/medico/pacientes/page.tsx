@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Topbar from "@/components/Topbar";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { headers } from "next/headers";
@@ -27,8 +26,7 @@ export default async function PacientesPage() {
 
   return (
     <>
-      <Topbar />
-      <main className="max-w-5xl mx-auto p-6 space-y-6">
+      <div className="">
         {/* VOLTAR para a Home do médico */}
         <div className="mb-2">
           <Link href="/medico" className="underline">
@@ -39,11 +37,11 @@ export default async function PacientesPage() {
         <h1 className="text-xl font-semibold">Pacientes</h1>
 
         {!medicoId ? (
-          <p className="text-gray-600">Este usuário não está vinculado a um médico.</p>
+          <p className="">Este usuário não está vinculado a um médico.</p>
         ) : (
           <PacientesTable medicoId={medicoId} />
         )}
-      </main>
+      </div>
     </>
   );
 }
@@ -60,7 +58,11 @@ async function PacientesTable({ medicoId }: { medicoId: number }) {
   });
 
   if (!res.ok) {
-    return <p className="text-red-600">Erro ao carregar pacientes (HTTP {res.status}).</p>;
+    return (
+      <p className="text-red-600">
+        Erro ao carregar pacientes (HTTP {res.status}).
+      </p>
+    );
   }
 
   const items = (await res.json()) as PacienteItem[];
@@ -108,7 +110,10 @@ async function PacientesTable({ medicoId }: { medicoId: number }) {
                 <td className="border px-2 py-1">{p.telefone ?? "-"}</td>
                 <td className="border px-2 py-1">{p.email ?? "-"}</td>
                 <td className="border px-2 py-1">
-                  <Link href={`/medico/pacientes/${p.id}`} className="underline">
+                  <Link
+                    href={`/medico/pacientes/${p.id}`}
+                    className="underline"
+                  >
                     editar
                   </Link>
                 </td>

@@ -19,14 +19,19 @@ export default async function ConsultasPage() {
   });
 
   return (
-    <main className="p-6 space-y-4">
+    <div>
       <div className="mb-2">
-        <Link href="/medico" className="underline">&larr; Voltar</Link>
+        <Link href="/medico" className="underline">
+          &larr; Voltar
+        </Link>
       </div>
 
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Consultas</h1>
-        <Link href="/medico/consultas/novo" className="px-3 py-2 rounded bg-blue-600 text-white">
+        <Link
+          href="/medico/consultas/novo"
+          className="px-3 py-2 rounded bg-blue-600 text-white"
+        >
           Nova consulta
         </Link>
       </div>
@@ -48,16 +53,25 @@ export default async function ConsultasPage() {
                 <td className="p-3">{c.paciente?.nome ?? "-"}</td>
                 <td className="p-3">{c.status}</td>
                 <td className="p-3">
-                  <Link href={`/medico/consultas/${c.id}`} className="text-blue-700 underline">abrir</Link>
+                  <Link
+                    href={`/medico/consultas/${c.id}`}
+                    className="text-blue-700 underline"
+                  >
+                    abrir
+                  </Link>
                 </td>
               </tr>
             ))}
             {consultas.length === 0 && (
-              <tr><td className="p-3" colSpan={4}>Nenhuma consulta ainda.</td></tr>
+              <tr>
+                <td className="p-3" colSpan={4}>
+                  Nenhuma consulta ainda.
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
       </div>
-    </main>
+    </div>
   );
 }

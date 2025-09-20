@@ -16,10 +16,9 @@ export default async function ArquivosPage() {
   if (!medicoId) {
     return (
       <>
-        <Topbar />
-        <main className="max-w-5xl mx-auto p-6">
-          <p className="text-gray-600">Este usuário não está vinculado a um médico.</p>
-        </main>
+        <div className="">
+          <p className="">Este usuário não está vinculado a um médico.</p>
+        </div>
       </>
     );
   }
@@ -49,8 +48,7 @@ export default async function ArquivosPage() {
 
   return (
     <>
-      <Topbar />
-      <main className="max-w-6xl mx-auto p-6 space-y-6">
+      <div className="">
         <div className="mb-2">
           <Link href="/medico" className="underline">
             &larr; Voltar
@@ -60,7 +58,7 @@ export default async function ArquivosPage() {
         <h1 className="text-xl font-semibold">Arquivos</h1>
 
         <Explorer pacientes={data} />
-      </main>
+      </div>
     </>
   );
 }
