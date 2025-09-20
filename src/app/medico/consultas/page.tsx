@@ -20,7 +20,7 @@ export default async function ConsultasPage() {
   });
 
   return (
-    <main className="p-6 space-y-4">
+    <div>
       <div className="mb-2">
         <Link href="/medico" className="underline">
           &larr; Voltar
@@ -45,6 +45,6 @@ export default async function ConsultasPage() {
           paciente: c.paciente?.nome ?? "-",
         }))}
       />
-    </main>
+    </div>
   );
 }

@@ -39,7 +39,7 @@ export default async function PacientesPage() {
   const PatientsTableClient = (await import("./PatientsTableClient")).default;
 
   return (
-    <main className="p-6 space-y-4">
+    <div className="p-6 space-y-4">
       {/* voltar */}
       <div className="mb-2">
         <Link
@@ -61,6 +61,6 @@ export default async function PacientesPage() {
       </div>
 
       <PatientsTableClient items={pacientes as PatientRow[]} />
-    </main>
+    </div>
   );
 }

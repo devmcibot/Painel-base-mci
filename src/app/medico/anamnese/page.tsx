@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 /** ===== Tipos base só para a tela ===== */
 type ConsultaItem = {
   id: number;
-  data: string;            // ISO
+  data: string; // ISO
   pastaPath: string | null;
   pacienteId: number;
   pacienteNome: string;
@@ -49,7 +49,9 @@ export default function AnamnesePage() {
   /** ===== Gravação (MediaRecorder) ===== */
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
-  const [recState, setRecState] = useState<"idle" | "recording" | "paused">("idle");
+  const [recState, setRecState] = useState<"idle" | "recording" | "paused">(
+    "idle"
+  );
   const [elapsedMs, setElapsedMs] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -59,7 +61,9 @@ export default function AnamnesePage() {
   const [textLive, setTextLive] = useState("");
   const stableRef = useRef<string>(""); // finais (para não repetir)
   const recStateRef = useRef(recState);
-  useEffect(() => { recStateRef.current = recState; }, [recState]);
+  useEffect(() => {
+    recStateRef.current = recState;
+  }, [recState]);
 
   /** Carrega dados mínimos — usa GET /api/medico/consultas */
   useEffect(() => {
@@ -100,7 +104,9 @@ export default function AnamnesePage() {
             });
           }
         });
-        setPacientes(Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome)));
+        setPacientes(
+          Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome))
+        );
       } catch (e: any) {
         console.error(e);
         setErrMsg(e?.message || "Falha ao carregar consultas.");
@@ -167,7 +173,8 @@ export default function AnamnesePage() {
         const res = ev.results[i];
         const txt = (res[0]?.transcript || "").trim();
         if (res.isFinal) {
-          if (stableRef.current && !stableRef.current.endsWith(" ")) stableRef.current += " ";
+          if (stableRef.current && !stableRef.current.endsWith(" "))
+            stableRef.current += " ";
           stableRef.current += txt;
         } else {
           interim += (interim ? " " : "") + txt;
@@ -178,7 +185,9 @@ export default function AnamnesePage() {
 
     rec.onend = () => {
       if (recStateRef.current === "recording") {
-        try { rec.start(); } catch {}
+        try {
+          rec.start();
+        } catch {}
       }
     };
 
@@ -187,7 +196,9 @@ export default function AnamnesePage() {
 
   function startRecognition() {
     setupRecognition();
-    try { recognitionRef.current?.start(); } catch {}
+    try {
+      recognitionRef.current?.start();
+    } catch {}
   }
 
   function stopRecognition() {
@@ -257,7 +268,9 @@ export default function AnamnesePage() {
             )} KB\n(Upload vem no próximo passo)`
           );
         } else {
-          alert("Áudio finalizando… (se não aparecer, clique de novo em alguns segundos)");
+          alert(
+            "Áudio finalizando… (se não aparecer, clique de novo em alguns segundos)"
+          );
         }
       }, 300);
     } catch (e) {
@@ -286,7 +299,10 @@ export default function AnamnesePage() {
       fd.append("audio", audioBlob, "audio.webm");
       fd.append("text", textLive || "");
 
-      const res = await fetch("/api/medico/anamnese", { method: "POST", body: fd });
+      const res = await fetch("/api/medico/anamnese", {
+        method: "POST",
+        body: fd,
+      });
       const j = await res.json();
 
       if (!res.ok) {
@@ -309,7 +325,10 @@ export default function AnamnesePage() {
   function fmtBr(dtIso: string) {
     const d = new Date(dtIso);
     const data = d.toLocaleDateString("pt-BR");
-    const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    const hora = d.toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
     return `${data}, ${hora}`;
   }
 
@@ -318,9 +337,11 @@ export default function AnamnesePage() {
   const hhmmss = new Date(elapsedMs).toISOString().substring(11, 19);
 
   return (
-    <main className="max-w-4xl mx-auto p-6 space-y-6">
+    <div className="">
       <div className="mb-2">
-        <a href="/medico" className="underline">&larr; Voltar</a>
+        <a href="/medico" className="underline">
+          &larr; Voltar
+        </a>
       </div>
 
       <h1 className="text-xl font-semibold">Anamnese</h1>
@@ -334,7 +355,9 @@ export default function AnamnesePage() {
         <select
           className="w-full border rounded px-3 py-2"
           value={pacienteId}
-          onChange={(e) => setPacienteId(e.target.value ? Number(e.target.value) : "")}
+          onChange={(e) =>
+            setPacienteId(e.target.value ? Number(e.target.value) : "")
+          }
           disabled={loading || !!errMsg}
         >
           <option value="">— selecione um paciente —</option>
@@ -352,7 +375,9 @@ export default function AnamnesePage() {
         <select
           className="w-full border rounded px-3 py-2"
           value={consultaId}
-          onChange={(e) => setConsultaId(e.target.value ? Number(e.target.value) : "")}
+          onChange={(e) =>
+            setConsultaId(e.target.value ? Number(e.target.value) : "")
+          }
           disabled={!pacienteId || loading || !!errMsg}
         >
           <option value="">— selecione um paciente primeiro —</option>
@@ -363,7 +388,7 @@ export default function AnamnesePage() {
           ))}
         </select>
         {pastaPath ? (
-          <p className="text-xs text-gray-500">Pasta da consulta: {pastaPath}</p>
+          <p className="text-xs">Pasta da consulta: {pastaPath}</p>
         ) : (
           consultaId && (
             <p className="text-xs text-amber-700">
@@ -433,12 +458,12 @@ export default function AnamnesePage() {
         </div>
 
         {audioBlob && (
-          <p className="text-xs text-gray-500">
+          <p className="text-xs">
             Áudio pronto na memória ({(audioBlob.size / 1024).toFixed(1)} KB).
             Upload vem no próximo passo.
           </p>
         )}
       </div>
-    </main>
+    </div>
   );
 }

@@ -17,7 +17,9 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
     return (
       <main className="p-6">
         <div className="mb-3">
-          <a href="/medico" className="underline">&larr; Voltar</a>
+          <a href="/medico" className="underline">
+            &larr; Voltar
+          </a>
         </div>
         <h1 className="text-xl font-semibold mb-2">Arquivos</h1>
         <p>Você precisa estar logado como médico.</p>
@@ -72,11 +74,14 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
 
   const friendly = (c: { id: number; data: Date; pastaPath: string | null }) =>
     lastSegment(c.pastaPath) ??
-    `${c.data.getFullYear()}${String(c.data.getMonth() + 1).padStart(2, "0")}${String(
-      c.data.getDate()
-    ).padStart(2, "0")}_${String(c.data.getHours()).padStart(2, "0")}${String(
-      c.data.getMinutes()
-    ).padStart(2, "0")}_${String(c.id).padStart(6, "0")}`;
+    `${c.data.getFullYear()}${String(c.data.getMonth() + 1).padStart(
+      2,
+      "0"
+    )}${String(c.data.getDate()).padStart(2, "0")}_${String(
+      c.data.getHours()
+    ).padStart(2, "0")}${String(c.data.getMinutes()).padStart(2, "0")}_${String(
+      c.id
+    ).padStart(6, "0")}`;
 
   const fullFolderPath =
     selected && selectedFolder ? `${base}/${selectedFolder}` : null;
@@ -84,7 +89,9 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
   return (
     <main className="p-6">
       <div className="mb-3">
-        <a href="/medico" className="underline">&larr; Voltar</a>
+        <a href="/medico" className="underline">
+          &larr; Voltar
+        </a>
       </div>
 
       <h1 className="text-xl font-semibold mb-4">Arquivos</h1>
@@ -100,7 +107,9 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
                 <Link
                   key={p.id}
                   href={`/medico/arquivo?p=${p.id}`}
-                  className={`block px-3 py-2 hover:bg-gray-50 ${active ? "bg-gray-100" : ""}`}
+                  className={`block px-3 py-2 hover:bg-gray-50 ${
+                    active ? "bg-gray-100" : ""
+                  }`}
                 >
                   <div className="font-medium">{p.nome}</div>
                   <div className="text-xs text-gray-500">{p.cpf ?? "-"}</div>
@@ -108,7 +117,9 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
               );
             })}
             {pacientes.length === 0 && (
-              <div className="px-3 py-2 text-sm text-gray-600">Nenhum paciente.</div>
+              <div className="px-3 py-2 text-sm text-gray-600">
+                Nenhum paciente.
+              </div>
             )}
           </div>
         </div>
@@ -118,7 +129,9 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
           <div className="font-medium mb-2">Consultas</div>
           <div className="border rounded divide-y min-h-[52px]">
             {!selected && (
-              <div className="px-3 py-2 text-sm text-gray-600">Selecione um paciente.</div>
+              <div className="px-3 py-2 text-sm text-gray-600">
+                Selecione um paciente.
+              </div>
             )}
 
             {selected && consultas.length === 0 && (
@@ -134,8 +147,12 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
                 return (
                   <Link
                     key={c.id}
-                    href={`/medico/arquivo?p=${selected.id}&c=${encodeURIComponent(folder)}`}
-                    className={`block px-3 py-2 hover:bg-gray-50 ${active ? "bg-gray-100" : ""}`}
+                    href={`/medico/arquivo?p=${
+                      selected.id
+                    }&c=${encodeURIComponent(folder)}`}
+                    className={`block px-3 py-2 hover:bg-gray-50 ${
+                      active ? "bg-gray-100" : ""
+                    }`}
                   >
                     {folder}
                   </Link>

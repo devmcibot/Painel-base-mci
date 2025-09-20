@@ -57,7 +57,7 @@ export default function LoginPage() {
         </div>
 
         <button className="w-full bg-black text-white rounded py-2">Entrar</button>
-        <p className="text-xs text-gray-500">Use o admin seedado para o primeiro acesso.</p>
+        <p className="text-xs">Use o admin seedado para o primeiro acesso.</p>
       </form>
     </div>
   );
