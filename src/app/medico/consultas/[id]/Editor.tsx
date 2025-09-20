@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Status = "ABERTA" | "CONCLUIDA" | "CANCELADA" | "FALTOU" | "REMARCADA";
 
@@ -10,83 +11,142 @@ export default function Editor({
   defaultStatus,
 }: {
   id: number;
-  defaultDate: string; // yyyy-MM-ddTHH:mm
+  defaultDate: string; // "YYYY-MM-DDTHH:mm" (local)
   defaultStatus: Status;
 }) {
-  const STATUS_OPS: Status[] = ["ABERTA", "CONCLUIDA", "CANCELADA", "FALTOU", "REMARCADA"];
+  const router = useRouter();
 
-  const [dt, setDt] = useState(defaultDate);
-  const [st, setSt] = useState<Status>(defaultStatus);
+  const [dateValue, setDateValue] = useState(defaultDate);
+  const [status, setStatus] = useState<Status>(defaultStatus);
   const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
 
-  async function salvar() {
+  async function save(partial?: { date?: string; status?: Status }) {
     setSaving(true);
-    const r = await fetch(`/api/medico/consultas/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: dt, status: st }),
-    });
-    setSaving(false);
-    if (r.ok) {
-      alert("Consulta atualizada");
-    } else {
-      const j = await r.json().catch(() => ({}));
-      alert(j?.error || "Falha ao atualizar");
+    setMsg(null);
+    try {
+      const body: any = {};
+      body.data = (partial?.date ?? dateValue) || undefined;   // << envia 'data'
+      body.status = (partial?.status ?? status) || undefined;  // << e 'status'
+
+      const r = await fetch(`/api/medico/consultas/${id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+
+      if (!r.ok) {
+        setMsg(j?.error ?? r.statusText);
+        return;
+      }
+
+      setMsg("Alterações salvas.");
+      // Recarrega os dados da página (e mantém no mesmo card)
+      router.refresh();
+    } catch (e: any) {
+      setMsg(String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function del() {
+    if (!confirm("Tem certeza que deseja excluir esta consulta?")) return;
+    setSaving(true);
+    try {
+      const r = await fetch(`/api/medico/consultas/${id}`, { method: "DELETE" });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        alert(j?.error ?? r.statusText);
+        return;
+      }
+      // volta para a lista
+      router.push("/medico/consultas");
+      router.refresh();
+    } finally {
+      setSaving(false);
     }
   }
 
   return (
-    <>
-      <div className="space-y-1">
-        <label className="block text-sm font-medium">Data/Hora</label>
+    <div className="space-y-3">
+      {msg && (
+        <div className="text-sm text-green-700">{msg}</div>
+      )}
+
+      <label className="block text-sm font-medium">
+        Data/Hora (30 min padrão)
+      </label>
+      <div className="flex gap-2 items-center">
         <input
           type="datetime-local"
-          className="border rounded w-full p-2"
-          value={dt}
-          onChange={(e) => setDt(e.target.value)}
+          value={dateValue}
+          onChange={(e) => setDateValue(e.target.value)}
+          className="border rounded px-3 py-2 w-64"
         />
       </div>
 
-      <div className="space-y-1">
-        <label className="block text-sm font-medium">Status</label>
-        <select
-          className="border rounded w-full p-2"
-          value={st}
-          onChange={(e) => setSt(e.target.value as Status)}
-        >
-          {STATUS_OPS.map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
-          ))}
-        </select>
+      <label className="block text-sm font-medium mt-2">Status</label>
+      <select
+        value={status}
+        onChange={(e) => setStatus(e.target.value as Status)}
+        className="border rounded px-3 py-2"
+      >
+        <option value="ABERTA">ABERTA</option>
+        <option value="CONCLUIDA">CONCLUÍDA</option>
+        <option value="CANCELADA">CANCELADA</option>
+        <option value="FALTOU">FALTOU</option>
+        <option value="REMARCADA">REMARCADA</option>
+      </select>
 
-        <div className="text-xs">
-          • <b>CONCLUIDA</b>: paciente atendido<br />
-          • <b>FALTOU</b>: não compareceu<br />
-          • <b>REMARCADA</b>: reagendada (altere a data)
-        </div>
-      </div>
-
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2 mt-3">
         <button
-          onClick={salvar}
+          onClick={() => save()}
           disabled={saving}
-          className="px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-60"
+          className="bg-blue-600 text-white px-3 py-2 rounded disabled:opacity-50"
         >
           {saving ? "Salvando..." : "Salvar alterações"}
         </button>
 
-        <button onClick={() => setSt("CONCLUIDA")} className="px-3 py-2 rounded border">
+        <button
+          onClick={() => save({ status: "CONCLUIDA" })}
+          disabled={saving}
+          className="px-3 py-2 rounded border"
+        >
           Marcar atendida
         </button>
-        <button onClick={() => setSt("FALTOU")} className="px-3 py-2 rounded border">
+
+        <button
+          onClick={() => save({ status: "FALTOU" })}
+          disabled={saving}
+          className="px-3 py-2 rounded border"
+        >
           Marcar falta
         </button>
-        <button onClick={() => setSt("REMARCADA")} className="px-3 py-2 rounded border">
+
+        <button
+          onClick={() => save({ status: "REMARCADA" })}
+          disabled={saving}
+          className="px-3 py-2 rounded border"
+        >
           Marcar remarcada
         </button>
+
+        <button
+          onClick={del}
+          disabled={saving}
+          className="bg-red-600 text-white px-3 py-2 rounded disabled:opacity-50 ml-auto"
+        >
+          Excluir consulta
+        </button>
       </div>
-    </>
+
+      <p className="text-xs text-gray-600 mt-2">
+        • Ao salvar com nova data/hora, o evento da agenda é criado/atualizado automaticamente
+        (30 min).<br />
+        • Conflitos são checados (horário do médico, ausências e sobreposição).
+      </p>
+    </div>
   );
 }

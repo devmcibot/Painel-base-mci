@@ -12,9 +12,8 @@ function slugifyNome(nome: string) {
     .replace(/(^-|-$)/g, "");
 }
 
-function pad6(n: number) {
-  return String(n).padStart(6, "0");
-}
+function pad2(n: number) { return String(n).padStart(2, "0"); }
+function pad6(n: number) { return String(n).padStart(6, "0"); }
 
 function cpfLast4(cpf?: string | null) {
   if (!cpf) return "xxxx";
@@ -22,7 +21,7 @@ function cpfLast4(cpf?: string | null) {
   return only.slice(-4).padStart(4, "x");
 }
 
-// caminho da PASTA do paciente
+// caminho da PASTA do paciente: {medicoId}/{000123_nome-slug_1234}
 export function patientFolderPath(opts: {
   medicoId: number;
   pacienteId: number;
@@ -31,35 +30,33 @@ export function patientFolderPath(opts: {
 }) {
   const slug = slugifyNome(opts.nome);
   const last4 = cpfLast4(opts.cpf);
-  // padrão: {medicoId}/{000123_nome-slug_1234}
   return `${opts.medicoId}/${pad6(opts.pacienteId)}_${slug}_${last4}`;
 }
 
-// subpasta da consulta dentro da pasta do paciente
-export function consultaFolderPath(opts: {
-  patientFolder: string;
-  consultaId: number;
-  data: Date;
-}) {
-  const y = opts.data.getFullYear();
-  const m = String(opts.data.getMonth() + 1).padStart(2, "0");
-  const d = String(opts.data.getDate()).padStart(2, "0");
-  const hh = String(opts.data.getHours()).padStart(2, "0");
-  const mm = String(opts.data.getMinutes()).padStart(2, "0");
-  return `${opts.patientFolder}/${y}/${m}/${d}/consulta_${pad6(opts.consultaId)}_${hh}${mm}`;
+// Nome curto e ordenável p/ pasta da consulta: 20250918_1030_000123
+export function consultaFolderName(consultaId: number, data: Date) {
+  const y = data.getFullYear();
+  const m = pad2(data.getMonth() + 1);
+  const d = pad2(data.getDate());
+  const hh = pad2(data.getHours());
+  const mm = pad2(data.getMinutes());
+  return `${y}${m}${d}_${hh}${mm}_${String(consultaId).padStart(6, "0")}`;
 }
 
-// “cria” pasta subindo um arquivo .keep (1 byte)
+/** Sobe um .keep para "materializar" a pasta. (Node-friendly) */
 export async function ensureFolder(path: string) {
   const keepPath = `${path}/.keep`;
-  const file = new Blob(["."], { type: "text/plain" });
 
-  // se já existe, ignora
-  const { data: stat } = await supabaseAdmin.storage.from(BUCKET).list(path, { limit: 1 });
-  if (stat && stat.length > 0) return { ok: true, path };
+  // já tem conteúdo?
+  const { data, error: statErr } = await supabaseAdmin.storage.from(BUCKET).list(path, { limit: 1 });
+  if (statErr) throw statErr;
+  if (data && data.length > 0) return { ok: true, path };
 
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(keepPath, file, {
+  // usar Buffer garante compatibilidade em runtime Node (Next.js API)
+  const buf = Buffer.from(".", "utf-8");
+  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(keepPath, buf, {
     upsert: false,
+    contentType: "text/plain",
   });
   if (error && !/The resource already exists/i.test(error.message)) {
     throw error;
@@ -67,34 +64,7 @@ export async function ensureFolder(path: string) {
   return { ok: true, path };
 }
 
-// uploads simples (texto)
-export async function uploadTextFile(fullPath: string, content: string) {
-  const blob = new Blob([content], { type: "text/plain; charset=utf-8" });
-  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(fullPath, blob, {
-    upsert: true,
-  });
-  if (error) throw error;
-  return { ok: true, path: fullPath };
-}
-
-// ...imports e helpers que você já tem
-
-function pad2(n: number) { return String(n).padStart(2, "0"); }
-
-export function consultaFolderName(consultaId: number, data: Date) {
-  const y = data.getFullYear();
-  const m = pad2(data.getMonth() + 1);
-  const d = pad2(data.getDate());
-  const hh = pad2(data.getHours());
-  const mm = pad2(data.getMinutes());
-  // ex.: 20250918_1030_000123
-  return `${y}${m}${d}_${hh}${mm}_${String(consultaId).padStart(6, "0")}`;
-}
-
-/**
- * Cria (materializa) a subpasta da consulta dentro da pasta do paciente
- * e retorna o caminho completo.
- */
+/** Cria (materializa) a subpasta da consulta dentro da pasta do paciente. */
 export async function ensureConsultaFolder(opts: {
   medicoId: number;
   pacienteId: number;
@@ -103,52 +73,79 @@ export async function ensureConsultaFolder(opts: {
   consultaId: number;
   data: Date;
 }) {
-  const root = patientFolderPath({
-    medicoId: opts.medicoId,
-    pacienteId: opts.pacienteId,
-    nome: opts.nome,
-    cpf: opts.cpf,
-  });
+  const root = patientFolderPath(opts);
   const folder = `${root}/${consultaFolderName(opts.consultaId, opts.data)}`;
   await ensureFolder(folder);
   return folder;
 }
 
-// === Gerar base indexada: anamnese_{slug}_{last4}_{NN} ===
+/** Upload simples (texto). */
+export async function uploadTextFile(fullPath: string, content: string) {
+  const buf = Buffer.from(content, "utf-8");
+  const { error } = await supabaseAdmin.storage.from(BUCKET).upload(fullPath, buf, {
+    upsert: true,
+    contentType: "text/plain; charset=utf-8",
+  });
+  if (error) throw error;
+  return { ok: true, path: fullPath };
+}
 
-/** Varre a pasta e devolve o próximo índice livre para um "basename" */
-export async function nextIndexedBasename(
-  dir: string,
-  base: string
-): Promise<string> {
-  // lista tudo da pasta
+/** Lista conteúdo de uma pasta (filtra .keep) */
+export async function listDir(prefix: string) {
+  const path = prefix.replace(/^\/+/, "").replace(/\/+$/, "");
+
   const { data, error } = await supabaseAdmin
     .storage
     .from(BUCKET)
-    .list(dir, { limit: 1000 }); // suficiente p/ sessão
+    .list(path, { limit: 1000, sortBy: { column: "name", order: "asc" } });
 
   if (error) throw error;
 
-  let max = 0;
-  for (const it of data ?? []) {
-    // procura arquivos que começam com `${base}_NN.`
-    const m = it.name.match(new RegExp(`^${base}_(\\d+)\\.`));
-    if (m) {
-      const n = parseInt(m[1], 10);
-      if (!Number.isNaN(n) && n > max) max = n;
-    }
-  }
+  const entries = (data ?? [])
+    .filter((it: any) => it.name !== ".keep")
+    .map((it: any) => ({
+      name: it.name as string,
+      isFolder: !it.metadata,
+      size: it.metadata?.size ?? 0,
+      updatedAt: it.updated_at ?? it.created_at ?? null,
+    }));
 
-  const next = String(max + 1).padStart(2, "0");
-  return `${base}_${next}`;
+  return {
+    folders: entries.filter(e => e.isFolder).map(e => e.name),
+    files: entries.filter(e => !e.isFolder).map(e => e.name),
+    raw: entries,
+    path,
+  };
 }
 
-/** Próximo "basename" para anamnese dentro de uma pasta de consulta */
-export async function nextAnamneseBasename(
-  folder: string,
-  pacienteNome: string,
-  pacienteCpf?: string | null
-): Promise<string> {
-  const base = `anamnese_${slugifyNome(pacienteNome)}_${cpfLast4(pacienteCpf)}`;
-  return nextIndexedBasename(folder, base);
+/** Remove recursivamente QUALQUER pasta no bucket (consulta/paciente/etc). */
+export async function rmRecursive(prefix: string) {
+  const root = prefix.replace(/^\/+/, "").replace(/\/+$/, "");
+
+  async function listAll(dir: string): Promise<string[]> {
+    const { data, error } = await supabaseAdmin.storage.from(BUCKET).list(dir, { limit: 1000 });
+    if (error) throw error;
+    if (!data?.length) return [];
+
+    const paths: string[] = [];
+    for (const item of data) {
+      const full = `${dir}/${item.name}`;
+      if ((item as any).metadata) {
+        // arquivo
+        paths.push(full);
+      } else {
+        // subpasta -> descer
+        paths.push(...await listAll(full));
+      }
+    }
+    return paths;
+  }
+
+  const files = await listAll(root);
+  if (!files.length) return { ok: true, deleted: 0 };
+
+  const { error: delErr } = await supabaseAdmin.storage.from(BUCKET).remove(files);
+  if (delErr) throw delErr;
+
+  return { ok: true, deleted: files.length };
 }

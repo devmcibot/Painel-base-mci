@@ -33,19 +33,21 @@ model User {
   name      String
   hashedPwd String
   createdAt DateTime   @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  updatedAt DateTime   @default(now()) @updatedAt
   medico    Medico?
 }
 
 model Medico {
-  id        Int            @id @default(autoincrement())
-  userId    Int            @unique
-  crm       String?
-  User      User           @relation(fields: [userId], references: [id])
-  pacientes Paciente[]
-  consultas Consulta[]
-  eventos   AgendaEvento[]
-  updatedAt DateTime @updatedAt @default(now())
+  id             Int              @id @default(autoincrement())
+  userId         Int              @unique
+  crm            String?
+  User           User             @relation(fields: [userId], references: [id])
+  pacientes      Paciente[]
+  consultas      Consulta[]
+  eventos        AgendaEvento[]
+  updatedAt      DateTime         @default(now()) @updatedAt
+  MedicoHorario  MedicoHorario[]
+  MedicoAusencia MedicoAusencia[]
 }
 
 model Paciente {
@@ -58,8 +60,8 @@ model Paciente {
   nascimento DateTime?
   endereco   String?
 
-  createdAt  DateTime  @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   medico       Medico         @relation(fields: [medicoId], references: [id])
   consultas    Consulta[]
@@ -82,8 +84,8 @@ model Consulta {
   anamnesePath    String?
   relatorioPath   String?
 
-  createdAt  DateTime @default(now())
-  updatedAt DateTime @updatedAt @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
 
   medico       Medico         @relation(fields: [medicoId], references: [id], onDelete: Restrict)
   paciente     Paciente       @relation(fields: [pacienteId], references: [id], onDelete: Restrict)
@@ -103,7 +105,7 @@ model Transcript {
   text       String
   createdAt  DateTime @default(now())
 
-  consulta   Consulta @relation(fields: [consultaId], references: [id], onDelete: Cascade)
+  consulta Consulta @relation(fields: [consultaId], references: [id], onDelete: Cascade)
 }
 
 model AgendaEvento {
@@ -114,7 +116,7 @@ model AgendaEvento {
   titulo     String
   inicio     DateTime
   fim        DateTime
-  origem     String   // "whatsapp" | "manual" | "n8n"
+  origem     String // "whatsapp" | "manual" | "n8n"
 
   // Para eventos sincronizados sem consulta vinculada
   googleEventId    String?
@@ -124,22 +126,58 @@ model AgendaEvento {
   paciente Paciente? @relation(fields: [pacienteId], references: [id], onDelete: SetNull)
   consulta Consulta? @relation(fields: [consultaId], references: [id], onDelete: SetNull)
 
+  @@unique([googleEventId, googleCalendarId])
   @@index([medicoId])
   @@index([pacienteId])
   @@index([consultaId])
-  @@unique([googleEventId, googleCalendarId])
+  // Índices para performance no calendário
+  @@index([medicoId, inicio])
+  @@index([medicoId, fim])
 }
 
 model ExternalLink {
-  id         Int      @id @default(autoincrement())
+  id         Int     @id @default(autoincrement())
   consultaId Int
-  provider   String   // "google"
-  externalId String   // google_event_id
+  provider   String // "google"
+  externalId String // google_event_id
   calendarId String?
 
-  consulta   Consulta @relation(fields: [consultaId], references: [id], onDelete: Cascade)
+  consulta Consulta @relation(fields: [consultaId], references: [id], onDelete: Cascade)
 
-  @@index([consultaId])
   @@unique([provider, externalId])
   @@unique([consultaId, provider])
+  @@index([consultaId])
+}
+
+// =======================
+// NOVOS MODELOS (Calendário)
+// =======================
+
+// Disponibilidade recorrente do médico (0=Dom ... 6=Sáb)
+// Horário salvo em minutos a partir de 00:00 do TZ do médico (ex.: 09:00 => 540)
+model MedicoHorario {
+  id       Int     @id @default(autoincrement())
+  medicoId Int
+  weekday  Int // 0..6
+  startMin Int // ex.: 540 (09:00)
+  endMin   Int // ex.: 1020 (17:00)
+  isActive Boolean @default(true)
+
+  medico Medico @relation(fields: [medicoId], references: [id], onDelete: Cascade)
+
+  @@index([medicoId, weekday])
+}
+
+// Ausências/exceções (folga, férias, feriado, bloqueio pontual)
+model MedicoAusencia {
+  id       Int      @id @default(autoincrement())
+  medicoId Int
+  inicio   DateTime // UTC
+  fim      DateTime // UTC
+  motivo   String?
+
+  medico Medico @relation(fields: [medicoId], references: [id], onDelete: Cascade)
+
+  @@index([medicoId, inicio])
+  @@index([medicoId, fim])
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import ConsultasTableClient from "./ConsultasTableClient";
 
 export default async function ConsultasPage() {
   const session = await getServerSession(authOptions);
@@ -36,42 +37,14 @@ export default async function ConsultasPage() {
         </Link>
       </div>
 
-      <div className="border rounded overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="p-3 text-left">Data/Hora</th>
-              <th className="p-3 text-left">Paciente</th>
-              <th className="p-3 text-left">Status</th>
-              <th className="p-3 text-left">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {consultas.map((c) => (
-              <tr key={c.id} className="border-t">
-                <td className="p-3">{new Date(c.data).toLocaleString()}</td>
-                <td className="p-3">{c.paciente?.nome ?? "-"}</td>
-                <td className="p-3">{c.status}</td>
-                <td className="p-3">
-                  <Link
-                    href={`/medico/consultas/${c.id}`}
-                    className="text-blue-700 underline"
-                  >
-                    abrir
-                  </Link>
-                </td>
-              </tr>
-            ))}
-            {consultas.length === 0 && (
-              <tr>
-                <td className="p-3" colSpan={4}>
-                  Nenhuma consulta ainda.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ConsultasTableClient
+        initialItems={consultas.map((c) => ({
+          id: c.id,
+          data: c.data.toISOString(),
+          status: c.status,
+          paciente: c.paciente?.nome ?? "-",
+        }))}
+      />
     </div>
   );
 }

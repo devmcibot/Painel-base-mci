@@ -7,36 +7,47 @@ import { ensureFolder, patientFolderPath } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
-function parseBrDate(d?: string | null): Date | null {
+// aceita dd/mm/aaaa ou dd/mm/aa (aa -> 19xx/20xx)
+function parseBrDateFlexible(d?: string | null): Date | null {
   if (!d) return null;
-  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(d.trim());
+  const m = /^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/.exec(d.trim());
   if (!m) return null;
-  const [_, dd, mm, yyyy] = m;
-  const dt = new Date(Number(yyyy), Number(mm) - 1, Number(dd));
+  const [, dd, mm, yy] = m;
+  let year = Number(yy);
+  if (yy.length === 2) {
+    year = year >= 50 ? 1900 + year : 2000 + year;
+  }
+  const dt = new Date(year, Number(mm) - 1, Number(dd));
   return isNaN(dt.getTime()) ? null : dt;
 }
 
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    const role = (session.user as any)?.role as "ADMIN" | "MEDICO";
-    const medicoId = (session.user as any)?.medicoId as number | null;
+    const role = (session.user as any)?.role as "ADMIN" | "MEDICO" | undefined;
+    const medicoId = (session.user as any)?.medicoId as number | undefined;
     if (role !== "MEDICO" || !medicoId) {
       return NextResponse.json({ error: "Somente médico pode criar" }, { status: 403 });
     }
 
     const body = await req.json();
-    const { nome, cpf, telefone, email, nascimento } = body as {
+    const { nome, cpf, telefone, email, nascimento } = (body ?? {}) as {
       nome: string;
       cpf: string;
       telefone?: string | null;
       email?: string | null;
-      nascimento?: string | null; // "dd/mm/aaaa"
+      nascimento?: string | null; // "dd/mm/aaaa" ou "dd/mm/aa"
     };
 
-    const nasc = parseBrDate(nascimento);
+    if (!nome?.trim() || !cpf?.trim()) {
+      return NextResponse.json({ error: "Nome e CPF são obrigatórios" }, { status: 400 });
+    }
+
+    const nasc = parseBrDateFlexible(nascimento);
 
     // 1) cria no banco
     const novo = await prisma.paciente.create({
@@ -48,25 +59,21 @@ export async function POST(req: Request) {
         email: email?.trim() || null,
         nascimento: nasc,
       },
-      select: { id: true, nome: true, cpf: true }, // já traz pra montar a pasta
+      select: { id: true, nome: true, cpf: true },
     });
 
-    // 2) monta o caminho determinístico da pasta do paciente
+    // 2) pasta no storage
     const folder = patientFolderPath({
       medicoId,
       pacienteId: novo.id,
       nome: novo.nome,
       cpf: novo.cpf,
     });
-
-    // 3) materializa a pasta no Storage (subindo .keep)
-    await ensureFolder(folder);
-
-    // (opcional) se tiver `pastaPath` no schema:
-    // await prisma.paciente.update({ where: { id: novo.id }, data: { pastaPath: folder } });
+    await ensureFolder(folder); // cria a pasta com .keep, idempotente
 
     return NextResponse.json({ id: novo.id, pastaPath: folder }, { status: 201 });
   } catch (e: any) {
+    // unique index do CPF
     if (e?.code === "P2002") {
       return NextResponse.json({ error: "CPF já cadastrado" }, { status: 409 });
     }

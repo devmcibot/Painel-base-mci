@@ -1,270 +1,173 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 
-type ConsultaItem = { id: number; data: string; pastaPath: string | null };
-type PacienteItem = { id: number; nome: string; cpf: string | null; consultas: ConsultaItem[] };
+type FileRow = {
+  name: string;
+};
 
-export default function Explorer({ pacientes }: { pacientes: PacienteItem[] }) {
-  const [pacienteId, setPacienteId] = useState<number | null>(null);
-  const [consultaId, setConsultaId] = useState<number | null>(null);
-  const [folderPath, setFolderPath] = useState<string>("");
+type Props = {
+  /** caminho completo da PASTA da consulta no bucket (ex.: 31/000030_daniel-.../20250919_0900_000045) */
+  folderPath: string;
+  /** lista de nomes de arquivos (sem caminho) */
+  files: string[];
+};
 
-  const [entries, setEntries] = useState<
-    { name: string; path: string; type: "file" | "folder"; size: number | null }[]
-  >([]);
-  const [loading, setLoading] = useState(false);
-  const [deleting, setDeleting] = useState<string | null>(null); // ⬅️ novo
-  const fileRef = useRef<HTMLInputElement>(null);
+/** ícone por extensão simples */
+function iconFor(name: string) {
+  const n = name.toLowerCase();
+  if (n.endsWith(".txt")) return "📄";
+  if (n.endsWith(".webm") || n.endsWith(".mp3") || n.endsWith(".wav")) return "🎧";
+  return "📦";
+}
 
-  const paciente = useMemo(
-    () => pacientes.find((p) => p.id === pacienteId) || null,
-    [pacienteId, pacientes]
+export default function Explorer({ folderPath, files }: Props) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const rows: FileRow[] = useMemo(
+    () => (files || []).map((name) => ({ name })),
+    [files]
   );
-  const consulta = useMemo(
-    () => paciente?.consultas.find((c) => c.id === consultaId) || null,
-    [paciente, consultaId]
-  );
 
-  useEffect(() => {
-    if (!paciente) {
-      setConsultaId(null);
-      setFolderPath("");
-      setEntries([]);
-      return;
+  const openFile = useCallback(async (name: string) => {
+    try {
+      const urlRes = await fetch(
+        `/api/storage/signed-url?path=${encodeURIComponent(`${folderPath}/${name}`)}`
+      );
+      const { url } = await urlRes.json();
+      if (!url) throw new Error("signed url vazio");
+      // abre em nova aba para preview (sem forçar download)
+      window.open(url, "_blank", "noopener,noreferrer");
+    } catch (e) {
+      alert("Falha ao abrir arquivo.");
+      console.error(e);
     }
-    if (paciente.consultas.length > 0) {
-      setConsultaId(paciente.consultas[0].id);
-    } else {
-      setConsultaId(null);
-      setFolderPath("");
-      setEntries([]);
-    }
-  }, [paciente]);
-
-  useEffect(() => {
-    if (!consulta || !consulta.pastaPath) {
-      setFolderPath("");
-      setEntries([]);
-      return;
-    }
-    setFolderPath(consulta.pastaPath);
-  }, [consulta]);
-
-  // 🔁 helper pra recarregar a lista
-  async function refreshList() {
-    if (!folderPath) return;
-    const qs = new URLSearchParams({ path: folderPath });
-    const r = await fetch(`/api/storage/list?${qs.toString()}`);
-    const j = await r.json();
-    setEntries(r.ok ? j.entries || [] : []);
-  }
-
-  useEffect(() => {
-    (async () => {
-      if (!folderPath) return;
-      setLoading(true);
-      try {
-        await refreshList();
-      } finally {
-        setLoading(false);
-      }
-    })();
   }, [folderPath]);
 
-  async function onClickUpload() {
-    if (!folderPath) {
-      alert("Selecione uma consulta com pasta válida para subir o arquivo.");
-      return;
-    }
-    fileRef.current?.click();
-  }
-
-  async function onFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !folderPath) return;
+  const downloadFile = useCallback(async (name: string) => {
     try {
-      const fd = new FormData();
-      fd.append("path", folderPath);
-      fd.append("file", file);
-
-      const res = await fetch("/api/storage/upload", { method: "POST", body: fd });
-      const j = await res.json();
-      if (!res.ok) {
-        alert(j?.error || "Falha no upload");
-        return;
-      }
-      await refreshList();
-    } finally {
-      if (fileRef.current) fileRef.current.value = "";
+      const urlRes = await fetch(
+        `/api/storage/signed-url?path=${encodeURIComponent(`${folderPath}/${name}`)}&download=${encodeURIComponent(name)}`
+      );
+      const { url } = await urlRes.json();
+      if (!url) throw new Error("signed url vazio");
+      window.location.href = url; // dispara download
+    } catch (e) {
+      alert("Falha ao gerar download.");
+      console.error(e);
     }
-  }
+  }, [folderPath]);
 
-  // 🔗 abrir em nova aba
-  async function onOpen(path: string) {
-    const qs = new URLSearchParams({ path });
-    const r = await fetch(`/api/storage/signed-url?${qs.toString()}`);
-    const j = await r.json();
-    if (!r.ok || !j?.url) {
-      alert(j?.error || "Falha ao gerar URL");
-      return;
-    }
-    window.open(j.url, "_blank", "noopener,noreferrer");
-  }
-
-  // ⬇️ baixar
-  async function onDownload(path: string, filename: string) {
-    const qs = new URLSearchParams({ path });
-    const r = await fetch(`/api/storage/signed-url?${qs.toString()}`);
-    const j = await r.json();
-    if (!r.ok || !j?.url) {
-      alert(j?.error || "Falha ao gerar URL");
-      return;
-    }
-    const a = document.createElement("a");
-    a.href = j.url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }
-
-  // 🗑️ excluir arquivo (não pasta; .keep já vem filtrado)
-  async function onDeleteFile(path: string) {
-    const name = path.split("/").pop() || "arquivo";
-    if (!confirm(`Excluir "${name}"? Esta ação não pode ser desfeita.`)) return;
-
+  const deleteFile = useCallback(async (name: string) => {
+    if (!confirm(`Excluir "${name}"?`)) return;
+    setBusy(true);
     try {
-      setDeleting(path);
       const res = await fetch("/api/storage/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify({ path: `${folderPath}/${name}` }),
       });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        alert(j?.error || "Falha ao excluir");
-        return;
-      }
-      await refreshList();
+      const j = await res.json();
+      if (!res.ok) throw new Error(j?.error || "Delete failed");
+      router.refresh();
+    } catch (e) {
+      alert("Falha ao excluir.");
+      console.error(e);
     } finally {
-      setDeleting(null);
+      setBusy(false);
     }
-  }
+  }, [folderPath, router]);
 
-  function fmtBr(dtIso: string) {
-    const d = new Date(dtIso);
-    const data = d.toLocaleDateString("pt-BR");
-    const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-    return `${data}, ${hora}`;
-  }
+  const onPickFiles = useCallback(async (ev: React.ChangeEvent<HTMLInputElement>) => {
+    const files = ev.target.files;
+    if (!files || files.length === 0) return;
+
+    setBusy(true);
+    try {
+      // envia em sequência (mantém simples). Se preferir, pode fazer Promise.all.
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("path", folderPath);   // sua rota espera "path" (pasta)
+        fd.append("file", file);         // e "file"
+        const res = await fetch("/api/storage/upload", { method: "POST", body: fd });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          throw new Error(j?.error || `Falha ao enviar ${file.name}`);
+        }
+      }
+      router.refresh();
+    } catch (e) {
+      alert((e as Error).message || "Falha no upload.");
+      console.error(e);
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  }, [folderPath, router]);
+
+  const triggerPicker = () => inputRef.current?.click();
 
   return (
-    <div className="grid grid-cols-12 gap-6">
-      {/* Pacientes */}
-      <div className="col-span-3">
-        <h2 className="font-semibold mb-2">Pacientes</h2>
-        <div className="border rounded divide-y">
-          {pacientes.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => setPacienteId(p.id)}
-              className={`w-full text-left p-2 ${pacienteId === p.id ? "bg-gray-100" : ""}`}
-            >
-              <div className="font-medium">{p.nome}</div>
-              <div className="text-xs">{p.cpf || "-"}</div>
-            </button>
-          ))}
-        </div>
+    <div className="border rounded divide-y min-h-[52px]">
+      {/* toolbar */}
+      <div className="px-3 py-2 flex items-center gap-2">
+        <button
+          onClick={triggerPicker}
+          disabled={busy}
+          className="px-3 py-1 border rounded disabled:opacity-50"
+          title="Enviar arquivos para esta consulta"
+        >
+          ⬆️ Upload (vários)
+        </button>
+        {busy && <span className="text-sm text-gray-500">Processando…</span>}
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          hidden
+          onChange={onPickFiles}
+        />
       </div>
 
-      {/* Consultas */}
-      <div className="col-span-4">
-        <h2 className="font-semibold mb-2">Consultas</h2>
-        {paciente ? (
-          paciente.consultas.length > 0 ? (
-            <div className="border rounded divide-y">
-              {paciente.consultas.map((c) => (
-                <button
-                  key={c.id}
-                  onClick={() => setConsultaId(c.id)}
-                  className={`w-full text-left p-2 ${consultaId === c.id ? "bg-gray-100" : ""}`}
-                >
-                  <div className="font-medium">#{c.id} • {fmtBr(c.data)}</div>
-                  <div className="text-xs ">{c.pastaPath || "(sem pasta)"}</div>
-                </button>
-              ))}
+      {/* lista */}
+      {rows.length === 0 ? (
+        <div className="px-3 py-2 text-sm text-gray-600">Sem arquivos.</div>
+      ) : (
+        rows.map(({ name }) => (
+          <div key={name} className="px-3 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span aria-hidden>{iconFor(name)}</span>
+              <span className="text-sm break-all">{name}</span>
             </div>
-          ) : (
-            <p className="">Sem consultas para este paciente.</p>
-          )
-        ) : (
-          <p className="">Selecione um paciente.</p>
-        )}
-      </div>
-
-      {/* Arquivos */}
-      <div className="col-span-5">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-semibold">Arquivos</h2>
-          <button
-            onClick={onClickUpload}
-            className="px-3 py-1 rounded bg-black text-white"
-            disabled={!folderPath}
-          >
-            Upload
-          </button>
-          <input ref={fileRef} type="file" className="hidden" onChange={onFilePicked} />
-        </div>
-
-        {!folderPath ? (
-          <div className="border rounded p-3 ">Selecione uma consulta.</div>
-        ) : loading ? (
-          <div className="border rounded p-3 ">Carregando…</div>
-        ) : entries.length === 0 ? (
-          <div className="border rounded p-3 ">Nenhum arquivo.</div>
-        ) : (
-          <ul className="border rounded divide-y">
-            {entries.map((e) => (
-              <li key={e.path} className="p-2 flex items-center gap-2">
-                <span className="text-xs px-1 rounded border">
-                  {e.type === "folder" ? "Pasta" : "Arquivo"}
-                </span>
-                <span className="truncate">{e.name}</span>
-
-                {/* Ações: só para arquivos */}
-                {e.type === "file" && (
-                  <div className="ml-auto flex items-center gap-2">
-                    <button
-                      onClick={() => onOpen(e.path)}
-                      className="px-2 py-1 text-sm border rounded hover:bg-gray-50"
-                    >
-                      Abrir
-                    </button>
-                    <button
-                      onClick={() => onDownload(e.path, e.name)}
-                      className="px-2 py-1 text-sm border rounded hover:bg-gray-50"
-                    >
-                      Baixar
-                    </button>
-                    <button
-                      onClick={() => onDeleteFile(e.path)}
-                      disabled={deleting === e.path}
-                      className="px-2 py-1 text-sm border rounded text-red-600 hover:bg-red-50 disabled:opacity-50"
-                    >
-                      {deleting === e.path ? "Excluindo..." : "Excluir"}
-                    </button>
-                  </div>
-                )}
-
-                {e.size != null && e.type === "file" && (
-                  <span className="text-xs ">{e.size} bytes</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => openFile(name)}
+                className="px-2 py-1 text-sm border rounded"
+                title="Visualizar"
+              >
+                👁️
+              </button>
+              <button
+                onClick={() => downloadFile(name)}
+                className="px-2 py-1 text-sm border rounded"
+                title="Download"
+              >
+                ⬇️
+              </button>
+              <button
+                onClick={() => deleteFile(name)}
+                className="px-2 py-1 text-sm border rounded text-red-700"
+                title="Excluir"
+              >
+                🗑️
+              </button>
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
