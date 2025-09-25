@@ -2,8 +2,9 @@
 import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import Call from "./Call";
 import { prisma } from "@/lib/prisma";
+import TeleChooser from "./tele-chooser";
+import Call from "./Call";
 
 export const dynamic = "force-dynamic";
 
@@ -15,53 +16,71 @@ export default async function TeleConsultaPage({ searchParams }: PageProps) {
   const session = await getServerSession(authOptions);
   if (!session?.user) redirect("/login?callbackUrl=/medico/teleconsulta");
 
-  // 1) Pegamos ids (pode vir da sua UI de seleção ou da querystring)
-  const pacienteId = Number(searchParams?.pacienteId || 0);
-  const consultaId = Number(searchParams?.consultaId || 0);
+  const medicoId = (session.user as { medicoId?: number | null }).medicoId ?? null;
+  if (!medicoId) {
+    return (
+      <main className="max-w-4xl mx-auto p-6">
+        <h1 className="text-2xl font-semibold">Tele-Consulta</h1>
+        <p className="text-sm text-red-600 mt-2">Usuário não vinculado a médico.</p>
+      </main>
+    );
+  }
 
-  // 2) Carrega a consulta para descobrir paciente + nome/cpf e validar médico dono
-  let meta:
-    | { medicoId: number; pacienteId: number; nome: string; cpf: string | null }
-    | null = null;
+  const pacienteId = Number(searchParams?.pacienteId || 0) || null;
+  const consultaId = Number(searchParams?.consultaId || 0) || null;
 
+  // Pacientes do médico (para o select)
+  const pacientes = await prisma.paciente.findMany({
+    where: { medicoId },
+    select: { id: true, nome: true, cpf: true },
+    orderBy: { nome: "asc" },
+  });
+
+  // Consultas do paciente selecionado (para o select)
+  const consultas = pacienteId
+    ? await prisma.consulta.findMany({
+        where: { pacienteId },
+        select: { id: true, data: true, pacienteId: true },
+        orderBy: { data: "desc" },
+      })
+    : [];
+
+  // Se ambos selecionados → confirme metadados e renderize a call
   if (pacienteId && consultaId) {
     const c = await prisma.consulta.findFirst({
       where: { id: consultaId, pacienteId },
       select: {
+        id: true,
         paciente: { select: { id: true, nome: true, cpf: true, medicoId: true } },
       },
     });
-    if (c?.paciente) {
-      meta = {
-        medicoId: c.paciente.medicoId,
-        pacienteId: c.paciente.id,
-        nome: c.paciente.nome,
-        cpf: c.paciente.cpf,
-      };
+
+    if (c?.paciente && c.paciente.medicoId === medicoId) {
+      return (
+        <main className="max-w-5xl mx-auto p-6 space-y-6">
+          <h1 className="text-2xl font-semibold">Tele-Consulta</h1>
+          <Call
+            medicoId={c.paciente.medicoId}
+            pacienteId={c.paciente.id}
+            nome={c.paciente.nome}
+            cpf={c.paciente.cpf}
+            consultaId={consultaId}
+          />
+        </main>
+      );
     }
   }
 
+  // Caso contrário: mostra seletor
   return (
-    <main className="max-w-4xl mx-auto p-6 space-y-6">
+    <main className="max-w-5xl mx-auto p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Tele-Consulta</h1>
-
-      {!meta ? (
-        <p className="text-sm">
-          Selecione um paciente e uma consulta pela Anamnese e acesse esta página com:
-          <br />
-          <code className="bg-gray-100 px-2 py-1 rounded">
-            /medico/teleconsulta?pacienteId=123&consultaId=456
-          </code>
-        </p>
-      ) : (
-        <Call
-          medicoId={meta.medicoId}
-          pacienteId={meta.pacienteId}
-          nome={meta.nome}
-          cpf={meta.cpf}
-          consultaId={consultaId}
-        />
-      )}
+      <TeleChooser
+        pacientes={pacientes.map((p) => ({ id: p.id, nome: p.nome, cpf: p.cpf }))}
+        consultas={consultas.map((c) => ({ id: c.id, dataISO: c.data.toISOString() }))}
+        selectedPacienteId={pacienteId}
+        selectedConsultaId={consultaId}
+      />
     </main>
   );
 }
