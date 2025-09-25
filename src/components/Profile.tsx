@@ -12,7 +12,7 @@ const Profile = () => {
         <div className="flex flex-col gap-4">
           <span className="capitalize font-semibold">Olá Dr. {user?.name}</span>
           <div className="flex items-center gap-4">
-            <button title="sair" onClick={() => signOut()}>
+            <button title="sair" onClick={() => signOut({ callbackUrl: "/" })}>
               <LogOutIcon />
             </button>
             <Link title="Minha conta" href={"/medico/perfil"}>
