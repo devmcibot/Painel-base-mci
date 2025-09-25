@@ -1,23 +1,22 @@
 // next.config.ts
-import type { NextConfig } from 'next';
+import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // (mantenha seu images.remotePatterns aqui, se já existir)
   images: {
     remotePatterns: [
       {
-        protocol: 'https',
-        hostname: '<sua-instancia>.supabase.co',
-        pathname: '/storage/v1/object/**',
+        protocol: "https",
+        hostname: "<sua-instancia>.supabase.co",
+        pathname: "/storage/v1/object/**",
       },
     ],
   },
   eslint: {
-    // NÃO falhar o build por erros de ESLint
+    // Não falhar o build por erros de ESLint (MVP)
     ignoreDuringBuilds: true,
   },
   typescript: {
-    // (opcional) NÃO falhar o build por erros de TypeScript
+    // Não falhar o build por erros de TypeScript (MVP)
     ignoreBuildErrors: true,
   },
 };
