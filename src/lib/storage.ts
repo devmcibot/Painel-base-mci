@@ -1,19 +1,44 @@
 // src/lib/storage.ts
 import { supabaseAdmin } from "./supabase";
 
-const BUCKET = process.env.SUPABASE_BUCKET!;
+// aceita STORAGE_BUCKET (padrão do projeto) ou SUPABASE_BUCKET (compat)
+const BUCKET = process.env.STORAGE_BUCKET ?? process.env.SUPABASE_BUCKET!;
+if (!BUCKET) {
+  throw new Error("Bucket não definido. Configure STORAGE_BUCKET (ou SUPABASE_BUCKET) nas envs.");
+}
+
+// Tipos mínimos para resposta do Storage.list()
+type StorageFileObject = {
+  name: string;
+  id?: string;
+  metadata: { size?: number } | null; // null => pasta; objeto => arquivo
+  updated_at?: string | null;
+  created_at?: string | null;
+};
+
+type ListDirEntry = {
+  name: string;
+  isFolder: boolean;
+  size: number;
+  updatedAt: string | null;
+};
 
 // --- helpers de nomeação ---
 function slugifyNome(nome: string) {
   return nome
     .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
 }
 
-function pad2(n: number) { return String(n).padStart(2, "0"); }
-function pad6(n: number) { return String(n).padStart(6, "0"); }
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+function pad6(n: number) {
+  return String(n).padStart(6, "0");
+}
 
 function cpfLast4(cpf?: string | null) {
   if (!cpf) return "xxxx";
@@ -44,11 +69,13 @@ export function consultaFolderName(consultaId: number, data: Date) {
 }
 
 /** Sobe um .keep para "materializar" a pasta. (Node-friendly) */
-export async function ensureFolder(path: string) {
+export async function ensureFolder(path: string): Promise<{ ok: true; path: string }> {
   const keepPath = `${path}/.keep`;
 
   // já tem conteúdo?
-  const { data, error: statErr } = await supabaseAdmin.storage.from(BUCKET).list(path, { limit: 1 });
+  const { data, error: statErr } = await supabaseAdmin.storage
+    .from(BUCKET)
+    .list(path, { limit: 1 });
   if (statErr) throw statErr;
   if (data && data.length > 0) return { ok: true, path };
 
@@ -72,7 +99,7 @@ export async function ensureConsultaFolder(opts: {
   cpf?: string | null;
   consultaId: number;
   data: Date;
-}) {
+}): Promise<string> {
   const root = patientFolderPath(opts);
   const folder = `${root}/${consultaFolderName(opts.consultaId, opts.data)}`;
   await ensureFolder(folder);
@@ -80,7 +107,10 @@ export async function ensureConsultaFolder(opts: {
 }
 
 /** Upload simples (texto). */
-export async function uploadTextFile(fullPath: string, content: string) {
+export async function uploadTextFile(
+  fullPath: string,
+  content: string
+): Promise<{ ok: true; path: string }> {
   const buf = Buffer.from(content, "utf-8");
   const { error } = await supabaseAdmin.storage.from(BUCKET).upload(fullPath, buf, {
     upsert: true,
@@ -91,35 +121,39 @@ export async function uploadTextFile(fullPath: string, content: string) {
 }
 
 /** Lista conteúdo de uma pasta (filtra .keep) */
-export async function listDir(prefix: string) {
+export async function listDir(prefix: string): Promise<{
+  folders: string[];
+  files: string[];
+  raw: ListDirEntry[];
+  path: string;
+}> {
   const path = prefix.replace(/^\/+/, "").replace(/\/+$/, "");
 
-  const { data, error } = await supabaseAdmin
-    .storage
+  const { data, error } = await supabaseAdmin.storage
     .from(BUCKET)
     .list(path, { limit: 1000, sortBy: { column: "name", order: "asc" } });
 
   if (error) throw error;
 
-  const entries = (data ?? [])
-    .filter((it: any) => it.name !== ".keep")
-    .map((it: any) => ({
-      name: it.name as string,
-      isFolder: !it.metadata,
+  const entries: ListDirEntry[] = (data as StorageFileObject[] | null ?? [])
+    .filter((it) => it.name !== ".keep")
+    .map((it) => ({
+      name: it.name,
+      isFolder: it.metadata === null,
       size: it.metadata?.size ?? 0,
       updatedAt: it.updated_at ?? it.created_at ?? null,
     }));
 
   return {
-    folders: entries.filter(e => e.isFolder).map(e => e.name),
-    files: entries.filter(e => !e.isFolder).map(e => e.name),
+    folders: entries.filter((e) => e.isFolder).map((e) => e.name),
+    files: entries.filter((e) => !e.isFolder).map((e) => e.name),
     raw: entries,
     path,
   };
 }
 
 /** Remove recursivamente QUALQUER pasta no bucket (consulta/paciente/etc). */
-export async function rmRecursive(prefix: string) {
+export async function rmRecursive(prefix: string): Promise<{ ok: true; deleted: number }> {
   const root = prefix.replace(/^\/+/, "").replace(/\/+$/, "");
 
   async function listAll(dir: string): Promise<string[]> {
@@ -128,14 +162,15 @@ export async function rmRecursive(prefix: string) {
     if (!data?.length) return [];
 
     const paths: string[] = [];
-    for (const item of data) {
+    for (const item of data as StorageFileObject[]) {
       const full = `${dir}/${item.name}`;
-      if ((item as any).metadata) {
+      if (item.metadata) {
         // arquivo
         paths.push(full);
       } else {
         // subpasta -> descer
-        paths.push(...await listAll(full));
+        const nested = await listAll(full);
+        paths.push(...nested);
       }
     }
     return paths;
