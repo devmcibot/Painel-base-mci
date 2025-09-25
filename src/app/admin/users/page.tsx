@@ -1,4 +1,3 @@
-import Topbar from "@/components/Topbar";
 import UsersTable from "./users-table";
 
 // sem cache, sempre renderiza de novo
@@ -7,12 +6,9 @@ export const revalidate = 0;
 
 export default function AdminUsersPage() {
   return (
-    <>
-      <Topbar />
-      <div className="max-w-5xl mx-auto p-6 space-y-6">
-        <h1 className="text-xl font-semibold">Usuários</h1>
-        <UsersTable />
-      </div>
-    </>
+    <div className="max-w-5xl mx-auto p-6 space-y-6">
+      <h1 className="text-xl font-semibold">Usuários</h1>
+      <UsersTable />
+    </div>
   );
 }
