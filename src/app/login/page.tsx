@@ -1,64 +1,52 @@
-// src/app/login/page.tsx
-"use client";
-import { FormEvent, useState } from "react";
-import { signIn } from "next-auth/react";
-import { useSearchParams, useRouter } from "next/navigation";
+// app/login/page.tsx
+import { getServerSession } from "next-auth";
+import { redirect } from "next/navigation";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-export default function LoginPage() {
-  const [email, setEmail] = useState("admin@mci.dev.br");
-  const [password, setPassword] = useState("");
-  const [err, setErr] = useState<string | null>(null);
-  const sp = useSearchParams();
-  const router = useRouter();
-  const callbackUrl = sp.get("callbackUrl") || "/admin";
+// Evita SSG/ISR dessa página (opcional, mas ajuda a não preregistrar no build)
+export const dynamic = "force-dynamic";
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    const res = await signIn("credentials", {
-      email,
-      password,
-      redirect: false,
-      callbackUrl,
-    });
-    if (res?.error) {
-      setErr(res.error === "CredentialsSignin" ? "E-mail ou senha inválidos" : res.error);
-      return;
-    }
-    router.push(callbackUrl);
+type PageProps = {
+  searchParams?: { callbackUrl?: string };
+};
+
+export default async function LoginPage({ searchParams }: PageProps) {
+  const session = await getServerSession(authOptions);
+
+  // Se já estiver logado, manda para o painel certo
+  if (session?.user) {
+    // Se veio callbackUrl, respeite; senão decide pelo papel
+    const role = (session.user as any)?.role as "ADMIN" | "MEDICO" | "MÉDICO" | undefined;
+    const fallback = role === "ADMIN" ? "/admin" : "/medico";
+    redirect(searchParams?.callbackUrl || fallback);
   }
 
+  const callback = searchParams?.callbackUrl;
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm bg-white shadow rounded-xl p-6 space-y-4">
-        <h1 className="text-xl font-semibold">Entrar no MCI</h1>
-        {err && <div className="text-sm text-red-600">{err}</div>}
+    <main className="min-h-screen flex items-center justify-center p-6">
+      <div className="w-full max-w-sm rounded-2xl border p-6 space-y-4 bg-white">
+        <h1 className="text-2xl font-semibold text-center">Entrar</h1>
 
-        <div className="space-y-1">
-          <label className="text-sm">E-mail</label>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            type="email"
-            placeholder="seuemail@exemplo.com"
-          />
-        </div>
+        {/* Se você usa Credentials Provider com formulário, coloque aqui.
+            Abaixo deixo um botão genérico que abre a tela padrão do NextAuth. */}
+        <SignInButton callbackUrl={callback} />
+      </div>
+    </main>
+  );
+}
 
-        <div className="space-y-1">
-          <label className="text-sm">Senha</label>
-          <input
-            className="w-full border rounded px-3 py-2"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            type="password"
-            placeholder="••••••••"
-          />
-        </div>
+// ---- Client component: apenas o botão que chama signIn() ----
+"use client";
+import { signIn } from "next-auth/react";
 
-        <button className="w-full bg-black text-white rounded py-2">Entrar</button>
-        <p className="text-xs">Use o admin seedado para o primeiro acesso.</p>
-      </form>
-    </div>
+function SignInButton({ callbackUrl }: { callbackUrl?: string }) {
+  return (
+    <button
+      className="w-full rounded-xl border px-4 py-2 hover:bg-gray-50"
+      onClick={() => signIn(undefined, { callbackUrl: callbackUrl || "/medico" })}
+    >
+      Entrar com provedor
+    </button>
   );
 }
