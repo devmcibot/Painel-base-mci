@@ -1,37 +1,47 @@
+// src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { getToken } from "next-auth/jwt";
 
+type Role = "ADMIN" | "MEDICO" | "MÉDICO";
+type TokenShape = {
+  role?: Role | null;
+  status?: "ACTIVE" | "BLOCKED" | string | null;
+};
+
 export async function middleware(req: NextRequest) {
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
   const { pathname } = req.nextUrl;
 
-  // sem login e tentando acessar áreas privadas
+  const token = (await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  })) as TokenShape | null;
+
   const needsAuth = pathname.startsWith("/admin") || pathname.startsWith("/medico");
+
   if (!token && needsAuth) {
     const url = req.nextUrl.clone();
-    url.pathname = "/";
+    url.pathname = "/login";
+    url.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(url);
   }
 
   if (token) {
-    const role = (token as any).role as "ADMIN" | "MEDICO";
+    const role = token.role ?? null;
 
-    // /admin só para ADMIN
     if (pathname.startsWith("/admin") && role !== "ADMIN") {
       const url = req.nextUrl.clone();
       url.pathname = "/medico";
       return NextResponse.redirect(url);
     }
 
-    // /medico só para MEDICO
-    if (pathname.startsWith("/medico") && role !== "MEDICO") {
+    const isMedicoRole = role === "MEDICO" || role === "MÉDICO";
+    if (pathname.startsWith("/medico") && !isMedicoRole) {
       const url = req.nextUrl.clone();
       url.pathname = "/admin";
       return NextResponse.redirect(url);
     }
 
-    // Home: manda para o painel certo
     if (pathname === "/") {
       const url = req.nextUrl.clone();
       url.pathname = role === "ADMIN" ? "/admin" : "/medico";
