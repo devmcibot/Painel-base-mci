@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "next-auth/react";
 import { sb } from "@/lib/realtime";
-import { ensureConsultaFolder, uploadTextFile } from "@/lib/storage";
 
 type Role = "ADMIN" | "MEDICO" | "MÉDICO" | string;
 
@@ -35,13 +34,11 @@ export default function Call({
   cpf: string | null;
   consultaId: number;
 }) {
-  // --- sessão/role para rotular falas ---
   const { data } = useSession();
   const role = (data?.user as { role?: Role } | undefined)?.role;
   const mySpeaker: "MEDICO" | "PACIENTE" =
     role === "ADMIN" || role === "MÉDICO" || role === "MEDICO" ? "MEDICO" : "PACIENTE";
 
-  // --- estados/refs principais ---
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -61,13 +58,10 @@ export default function Call({
   const [transcript, setTranscript] = useState<string>("");
   const recognizerRef = useRef<any | null>(null);
 
-  // erros visíveis (sem quebrar a tela)
   const [uiError, setUiError] = useState<string | null>(null);
 
-  // canal Realtime por consulta
   const channel = useMemo(() => sb.channel(`tele-${consultaId}`), [consultaId]);
 
-  // ===== 1) SINALIZAÇÃO PELO SUPABASE REALTIME =====
   useEffect(() => {
     const sub = channel
       .on("broadcast", { event: "signal" }, async ({ payload }) => {
@@ -101,7 +95,6 @@ export default function Call({
     };
   }, [channel]);
 
-  // ===== 2) SETUP WEBRTC (pega câmera/mic, cria RTCPeerConnection) =====
   useEffect(() => {
     if (!roomReady) return;
 
@@ -112,7 +105,6 @@ export default function Call({
         });
         pcRef.current = pc;
 
-        // remoto
         const remote = new MediaStream();
         setRemoteStream(remote);
         pc.ontrack = (ev) => {
@@ -120,7 +112,6 @@ export default function Call({
           if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote;
         };
 
-        // candidatos
         pc.onicecandidate = (ev) => {
           if (ev.candidate) {
             const msg: SignalMsg = { type: "ice", candidate: ev.candidate.toJSON() };
@@ -128,13 +119,11 @@ export default function Call({
           }
         };
 
-        // local
         const local = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setLocalStream(local);
         local.getTracks().forEach((t) => pc.addTrack(t, local));
         if (localVideoRef.current) localVideoRef.current.srcObject = local;
 
-        // quem cria a OFFER? o primeiro que entrar define isCaller=true
         setIsCaller(true);
       } catch (e: any) {
         setUiError(
@@ -154,12 +143,12 @@ export default function Call({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomReady]);
 
-  // ===== 3) SE SOU CALLER, CRIO E ENVIO A OFFER =====
   useEffect(() => {
     (async () => {
       if (!roomReady || isCaller !== true) return;
       const pc = pcRef.current;
       if (!pc) return;
+
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       const msg: SignalMsg = { type: "offer", sdp: offer };
@@ -167,7 +156,6 @@ export default function Call({
     })();
   }, [roomReady, isCaller, channel]);
 
-  // ===== 4) TRANSCRIÇÃO LOCAL (Web Speech) =====
   useEffect(() => {
     const SR =
       (window as any).webkitSpeechRecognition ||
@@ -175,7 +163,6 @@ export default function Call({
       null;
 
     if (!SR) {
-      // Sem Web Speech: não quebra; só informa
       setTranscript((prev) => prev + "\n[INFO] Web Speech não disponível neste navegador.");
       return;
     }
@@ -193,30 +180,25 @@ export default function Call({
         const final = !!r.isFinal;
         if (!text) continue;
 
-        // mostra local
         setTranscript((prev) => prev + `\n[${mySpeaker}] ${text}`);
 
-        // envia para o outro lado
         const msg: SignalMsg = { type: "stt", speaker: mySpeaker, text, final };
         channel.send({ type: "broadcast", event: "signal", payload: msg });
       }
     };
-
-    rec.onerror = () => {/* silencioso no MVP */};
+    rec.onerror = () => {};
     rec.onend = () => {
-      // tenta manter ligado enquanto a página estiver aberta
-      try { rec.start(); } catch {/* ignore */}
+      try { rec.start(); } catch {}
     };
 
-    try { rec.start(); } catch {/* ignore */}
+    try { rec.start(); } catch {}
 
     return () => {
-      try { rec.stop(); } catch {/* ignore */}
+      try { rec.stop(); } catch {}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [channel, mySpeaker]);
 
-  // ===== 5) GRAVAÇÃO (mix local + remoto) =====
   async function startRecording() {
     if (!localStream || !remoteStream) {
       setUiError("Fluxos de áudio ainda não prontos.");
@@ -247,44 +229,44 @@ export default function Call({
   async function stopAndUpload() {
     if (!recorderRef.current) return;
     const mr = recorderRef.current;
+
+    const timestamp = ts();
     mr.onstop = async () => {
       try {
         setRecording(false);
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        const fileName = `tele_${ts()}.webm`;
-        const txtName = `tele_transcricao_${ts()}.txt`;
 
-        // 1) pasta da consulta
-        const folder = await ensureConsultaFolder({
-          medicoId,
-          pacienteId,
-          nome,
-          cpf,
-          consultaId,
-          data: new Date(),
-        });
+        // Envia para a API server
+        const form = new FormData();
+        form.append("audio", blob, `tele_${timestamp}.webm`);
+        form.append(
+          "meta",
+          JSON.stringify({
+            medicoId,
+            pacienteId,
+            nome,
+            cpf,
+            consultaId,
+            timestamp,
+            transcript,
+          })
+        );
 
-        // 2) upload do áudio
-        const buf = Buffer.from(await blob.arrayBuffer());
-        const { supabaseAdmin } = await import("@/lib/supabase");
-        const bucket = process.env.STORAGE_BUCKET || process.env.SUPABASE_BUCKET!;
-        const { error: upErr } = await supabaseAdmin
-          .storage
-          .from(bucket)
-          .upload(`${folder}/${fileName}`, buf, { contentType: "audio/webm", upsert: true });
-        if (upErr) throw upErr;
-
-        // 3) upload do texto
-        await uploadTextFile(`${folder}/${txtName}`, transcript);
+        const resp = await fetch("/api/tele/save", { method: "POST", body: form });
+        if (!resp.ok) {
+          const j = await resp.json().catch(() => ({}));
+          throw new Error(j.error || `HTTP ${resp.status}`);
+        }
 
         alert("Tele-consulta salva com sucesso!");
       } catch (e: any) {
         setUiError(`Falha ao salvar arquivos: ${e?.message || String(e)}`);
       }
     };
+
     try {
       mr.stop();
-    } catch {/* ignore */}
+    } catch {}
   }
 
   return (
@@ -316,7 +298,7 @@ export default function Call({
         <h3 className="font-semibold mb-2">Transcrição (ao vivo)</h3>
         <textarea className="w-full h-60 border rounded p-2 text-sm" value={transcript} readOnly />
         <p className="text-xs text-gray-500 mt-1">
-          Os trechos dos dois lados chegam via Realtime. Se o navegador não suportar Web Speech, um aviso aparece acima.
+          Se o navegador não suportar Web Speech, aparece um aviso. A chamada funciona normalmente.
         </p>
       </div>
     </div>
