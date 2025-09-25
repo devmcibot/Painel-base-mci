@@ -39,14 +39,14 @@ export default async function PacientesPage() {
   const PatientsTableClient = (await import("./PatientsTableClient")).default;
 
   return (
-    <div className="p-6 space-y-4">
-      {/* voltar */}
+    <div className="">
+      {/* Início */}
       <div className="mb-2">
         <Link
           href="/medico"
           className="inline-flex items-center gap-2 text-sm text-blue-700 underline"
         >
-          &larr; Voltar
+          &larr; Início
         </Link>
       </div>
 
@@ -54,7 +54,7 @@ export default async function PacientesPage() {
         <h1 className="text-2xl font-semibold">Pacientes</h1>
         <Link
           href="/medico/pacientes/novo"
-          className="px-3 py-2 rounded bg-blue-600 text-white"
+          className="px-3 py-2 rounded bg-blue-primary text-white"
         >
           Adicionar paciente
         </Link>

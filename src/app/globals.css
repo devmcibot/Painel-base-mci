@@ -14,3 +14,7 @@ body {
 button {
   cursor: pointer;
 }
+input[type="time"]::-webkit-calendar-picker-indicator {
+    background: none; /* Remove o fundo da imagem (o ícone) */
+    display: none;    /* Oculta completamente o elemento */
+}

@@ -29,7 +29,7 @@ export default async function EditarPacientePage({
   return (
     <main className="max-w-3xl mx-auto p-6 space-y-6">
       <div>
-        <Link href="/medico/pacientes" className="underline">&larr; Voltar</Link>
+        <Link href="/medico/pacientes" className="underline">&larr; Início</Link>
       </div>
 
       <h1 className="text-xl font-semibold">Editar paciente #{p.id}</h1>

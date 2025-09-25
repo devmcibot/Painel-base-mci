@@ -56,10 +56,10 @@ export default function NovoPacientePage() {
   }
 
   return (
-    <main className="p-6 space-y-4">
+    <div className="">
       <div>
         <a href="/medico/pacientes" className="underline">
-          &larr; Voltar
+          &larr; Início
         </a>
       </div>
 
@@ -123,11 +123,11 @@ export default function NovoPacientePage() {
 
         <button
           disabled={saving}
-          className="px-4 py-2 rounded bg-blue-600 text-white disabled:opacity-50"
+          className="px-4 py-2 rounded bg-blue-primary text-white disabled:opacity-50"
         >
           {saving ? "Salvando..." : "Salvar"}
         </button>
       </form>
-    </main>
+    </div>
   );
 }

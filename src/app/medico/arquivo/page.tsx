@@ -18,7 +18,7 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
       <main className="p-6">
         <div className="mb-3">
           <a href="/medico" className="underline">
-            &larr; Voltar
+            &larr; Início
           </a>
         </div>
         <h1 className="text-xl font-semibold mb-2">Arquivos</h1>
@@ -90,7 +90,7 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
     <main className="p-6">
       <div className="mb-3">
         <a href="/medico" className="underline">
-          &larr; Voltar
+          &larr; Início
         </a>
       </div>
 

@@ -11,9 +11,9 @@ export default async function Page() {
   const medicoId = (session?.user as any)?.medicoId as number | undefined;
 
   return (
-    <main className="p-6 space-y-4">
+    <div className="">
       <div>
-        <Link href="/medico/consultas" className="underline">&larr; Voltar</Link>
+        <Link href="/medico/consultas" className="underline">&larr; Início</Link>
       </div>
       <h1 className="text-2xl font-semibold">Nova consulta — Agenda</h1>
       {medicoId ? (
@@ -23,6 +23,6 @@ export default async function Page() {
           Não foi possível identificar o médico autenticado.
         </div>
       )}
-    </main>
+    </div>
   );
 }

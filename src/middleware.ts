@@ -10,7 +10,7 @@ export async function middleware(req: NextRequest) {
   const needsAuth = pathname.startsWith("/admin") || pathname.startsWith("/medico");
   if (!token && needsAuth) {
     const url = req.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/";
     return NextResponse.redirect(url);
   }
 

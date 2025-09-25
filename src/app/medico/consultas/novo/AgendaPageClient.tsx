@@ -290,7 +290,7 @@ export default function AgendaPageClient({ medicoId }: { medicoId: number }) {
         <button
           onClick={checkAvailability}
           disabled={loading}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          className="bg-blue-primary text-white px-4 py-2 rounded disabled:opacity-50"
         >
           {loading ? "Verificando..." : "Verificar disponibilidade"}
         </button>
@@ -429,7 +429,7 @@ function HoursEditor({
           ))}
 
           <div className="pt-2">
-            <button disabled={saving} onClick={save} className="px-3 py-1.5 rounded bg-blue-600 text-white disabled:opacity-50">
+            <button disabled={saving} onClick={save} className="px-3 py-1.5 rounded bg-blue-primary text-white disabled:opacity-50">
               {saving ? "Salvando..." : "Salvar horários"}
             </button>
           </div>

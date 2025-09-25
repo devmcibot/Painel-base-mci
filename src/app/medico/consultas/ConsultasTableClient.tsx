@@ -10,11 +10,34 @@ type Row = {
   paciente: string;
 };
 
-export default function ConsultasTableClient({ initialItems }: { initialItems: Row[] }) {
+export default function ConsultasTableClient({
+  initialItems,
+}: {
+  initialItems: Row[];
+}) {
   const [rows, setRows] = useState<Row[]>(initialItems);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [msg, setMsg] = useState<string | null>(null);
-  const allSelected = useMemo(() => rows.length > 0 && selected.size === rows.length, [rows, selected]);
+
+  // 1. Adicionar estado para o termo da busca
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // 2. Criar uma lista de linhas filtradas com base na busca
+  const filteredRows = useMemo(() => {
+    if (!searchQuery) {
+      return rows;
+    }
+    return rows.filter((row) =>
+      row.paciente.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [rows, searchQuery]);
+
+  // 3. A lógica de "selecionar tudo" deve se basear nas linhas filtradas
+  const allSelected = useMemo(
+    () =>
+      filteredRows.length > 0 && filteredRows.every((r) => selected.has(r.id)),
+    [filteredRows, selected]
+  );
 
   function toggleOne(id: number, checked: boolean) {
     setSelected((curr) => {
@@ -27,16 +50,24 @@ export default function ConsultasTableClient({ initialItems }: { initialItems: R
 
   function toggleAll(checked: boolean) {
     if (!checked) {
-      setSelected(new Set());
+      // Ao desmarcar "todos", remove apenas os itens visíveis (filtrados) da seleção
+      const next = new Set(selected);
+      filteredRows.forEach((row) => next.delete(row.id));
+      setSelected(next);
     } else {
-      setSelected(new Set(rows.map((r) => r.id)));
+      // Ao marcar "todos", adiciona todos os itens visíveis (filtrados) à seleção
+      const next = new Set(selected);
+      filteredRows.forEach((row) => next.add(row.id));
+      setSelected(next);
     }
   }
 
   async function bulkDelete() {
     if (selected.size === 0) return;
     const ids = Array.from(selected);
-    const ok = confirm(`Excluir ${ids.length} consulta(s)? Esta ação não pode ser desfeita.`);
+    const ok = confirm(
+      `Excluir ${ids.length} consulta(s)? Esta ação não pode ser desfeita.`
+    );
     if (!ok) return;
 
     setMsg(null);
@@ -54,7 +85,11 @@ export default function ConsultasTableClient({ initialItems }: { initialItems: R
       // remove do estado
       setRows((curr) => curr.filter((x) => !selected.has(x.id)));
       setSelected(new Set());
-      setMsg(`Excluídas: ${j.deleted}${j.removedEvents ? ` · Eventos removidos: ${j.removedEvents}` : ""}`);
+      setMsg(
+        `Excluídas: ${j.deleted}${
+          j.removedEvents ? ` · Eventos removidos: ${j.removedEvents}` : ""
+        }`
+      );
     } catch (e: any) {
       setMsg(String(e));
     }
@@ -63,8 +98,19 @@ export default function ConsultasTableClient({ initialItems }: { initialItems: R
   return (
     <div className="border rounded overflow-hidden">
       <div className="flex items-center justify-between px-3 py-2 bg-gray-50">
-        <div className="text-sm">
-          {selected.size > 0 ? `${selected.size} selecionada(s)` : "Nenhuma seleção"}
+        {/* 4. Adicionar o campo de input para a busca */}
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Buscar por paciente..."
+          className="border rounded px-3 py-1.5 text-sm w-full max-w-xs"
+        />
+
+        <div className="flex-grow text-center text-sm px-4">
+          {selected.size > 0
+            ? `${selected.size} selecionada(s)`
+            : "Nenhuma seleção"}
           {msg ? ` — ${msg}` : ""}
         </div>
         <div className="flex items-center gap-2">
@@ -82,7 +128,11 @@ export default function ConsultasTableClient({ initialItems }: { initialItems: R
         <thead className="bg-gray-50">
           <tr>
             <th className="p-3 w-10">
-              <input type="checkbox" checked={allSelected} onChange={(e) => toggleAll(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={(e) => toggleAll(e.target.checked)}
+              />
             </th>
             <th className="p-3 text-left">Data/Hora</th>
             <th className="p-3 text-left">Paciente</th>
@@ -91,7 +141,8 @@ export default function ConsultasTableClient({ initialItems }: { initialItems: R
           </tr>
         </thead>
         <tbody>
-          {rows.map((c) => (
+          {/* 5. Mapear sobre a lista filtrada (`filteredRows`) */}
+          {filteredRows.map((c) => (
             <tr key={c.id} className="border-t">
               <td className="p-3 text-center">
                 <input
@@ -104,15 +155,26 @@ export default function ConsultasTableClient({ initialItems }: { initialItems: R
               <td className="p-3">{c.paciente}</td>
               <td className="p-3">{c.status}</td>
               <td className="p-3">
-                <Link href={`/medico/consultas/${c.id}`} className="text-blue-700 underline">
+                <Link
+                  href={`/medico/consultas/${c.id}`}
+                  className="text-blue-700 underline"
+                >
                   abrir
                 </Link>
               </td>
             </tr>
           ))}
+          {/* 6. Mensagens de estado vazio personalizadas */}
+          {rows.length > 0 && filteredRows.length === 0 && (
+            <tr>
+              <td className="p-3 text-center" colSpan={5}>
+                Nenhuma consulta encontrada para este paciente.
+              </td>
+            </tr>
+          )}
           {rows.length === 0 && (
             <tr>
-              <td className="p-3" colSpan={5}>
+              <td className="p-3 text-center" colSpan={5}>
                 Nenhuma consulta ainda.
               </td>
             </tr>

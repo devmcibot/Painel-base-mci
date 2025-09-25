@@ -11,7 +11,7 @@ export async function middleware(req: NextRequest) {
 
   // precisa estar logado para áreas privadas
   if (isPrivate && !token) {
-    const loginUrl = new URL("/login", req.url);
+    const loginUrl = new URL("/", req.url);
     loginUrl.searchParams.set("callbackUrl", url.pathname);
     return NextResponse.redirect(loginUrl);
   }

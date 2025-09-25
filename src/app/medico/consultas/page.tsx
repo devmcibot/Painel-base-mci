@@ -23,7 +23,7 @@ export default async function ConsultasPage() {
     <div>
       <div className="mb-2">
         <Link href="/medico" className="underline">
-          &larr; Voltar
+          &larr; Início
         </Link>
       </div>
 
@@ -31,7 +31,7 @@ export default async function ConsultasPage() {
         <h1 className="text-2xl font-semibold">Consultas</h1>
         <Link
           href="/medico/consultas/novo"
-          className="px-3 py-2 rounded bg-blue-600 text-white"
+          className="px-3 py-2 rounded bg-blue-primary text-white"
         >
           Nova consulta
         </Link>

@@ -280,7 +280,7 @@ export default function AgendaTester({ medicoId }: { medicoId: number }) {
         <button
           onClick={checkAvailability}
           disabled={loading}
-          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          className="bg-blue-primary text-white px-4 py-2 rounded disabled:opacity-50"
         >
           {loading ? "Verificando..." : "Verificar disponibilidade"}
         </button>

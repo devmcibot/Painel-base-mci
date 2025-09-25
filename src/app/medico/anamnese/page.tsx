@@ -340,7 +340,7 @@ export default function AnamnesePage() {
     <div className="">
       <div className="mb-2">
         <a href="/medico" className="underline">
-          &larr; Voltar
+          &larr; Início
         </a>
       </div>
 

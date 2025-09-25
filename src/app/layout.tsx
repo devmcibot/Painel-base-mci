@@ -1,7 +1,10 @@
+// app/layout.tsx
+
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Providers from "./providers";
+import MainContent from "@/components/MainContent";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -23,7 +26,8 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={inter.variable}>
         <Providers>
-          <main className={`w-full pl-64 pr-8 py-16`}>{children}</main>
+          {/* 2. Substitua a tag <main> pelo componente MainContent */}
+          <MainContent>{children}</MainContent>
         </Providers>
       </body>
     </html>

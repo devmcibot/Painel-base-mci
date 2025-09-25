@@ -104,7 +104,7 @@ export default function Editor({
         <button
           onClick={() => save()}
           disabled={saving}
-          className="bg-blue-600 text-white px-3 py-2 rounded disabled:opacity-50"
+          className="bg-blue-primary text-white px-3 py-2 rounded disabled:opacity-50"
         >
           {saving ? "Salvando..." : "Salvar alterações"}
         </button>

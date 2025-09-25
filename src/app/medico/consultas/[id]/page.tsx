@@ -18,10 +18,10 @@ export default async function ConsultaPage({ params }: { params: { id: string } 
   const dtLocal = toDatetimeLocalValue(c.data); // YYYY-MM-DDTHH:mm no horário local
 
   return (
-    <main className="p-6 space-y-4">
+    <div className="">
       <div>
         <Link href="/medico/consultas" className="underline">
-          &larr; Voltar
+          &larr; Início
         </Link>
       </div>
 
@@ -34,6 +34,6 @@ export default async function ConsultaPage({ params }: { params: { id: string } 
 
         <Editor id={c.id} defaultDate={dtLocal} defaultStatus={c.status as any} />
       </div>
-    </main>
+    </div>
   );
 }
