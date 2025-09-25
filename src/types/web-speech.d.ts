@@ -2,16 +2,16 @@
 export {};
 
 declare global {
+  interface SpeechRecognitionAlternative {
+    readonly transcript: string;
+    readonly confidence: number;
+  }
+
   interface SpeechRecognitionResult {
     readonly isFinal: boolean;
     readonly length: number;
     item(index: number): SpeechRecognitionAlternative;
     [index: number]: SpeechRecognitionAlternative;
-  }
-
-  interface SpeechRecognitionAlternative {
-    readonly transcript: string;
-    readonly confidence: number;
   }
 
   interface SpeechRecognitionResultList {
@@ -36,7 +36,6 @@ declare global {
     interimResults: boolean;
     maxAlternatives: number;
 
-    onaudioend: ((this: SpeechRecognition, ev: Event) => unknown) | null;
     onresult: ((this: SpeechRecognition, ev: SpeechRecognitionEvent) => unknown) | null;
     onerror: ((this: SpeechRecognition, ev: SpeechRecognitionErrorEvent) => unknown) | null;
 
