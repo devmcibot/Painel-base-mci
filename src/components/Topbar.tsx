@@ -1,10 +1,16 @@
 "use client";
+
 import { useSession, signOut } from "next-auth/react";
 import Link from "next/link";
 
+type UserLike = {
+  name?: string | null;
+  medicoId?: number | null;
+};
+
 export default function Topbar() {
   const { data } = useSession();
-  const user = data?.user as any | undefined;
+  const user = (data?.user as UserLike | undefined) ?? undefined;
 
   return (
     <header className="w-full border-b bg-white">
@@ -16,7 +22,7 @@ export default function Topbar() {
         </Link>
         <div className="flex items-center gap-8">
           {user?.name && (
-            <span className="text-2xl capitalize font-semibold">Dr. {user?.name}</span>
+            <span className="text-2xl capitalize font-semibold">Dr. {user.name}</span>
           )}
           <button title="sair" onClick={() => signOut()}>
             <svg
