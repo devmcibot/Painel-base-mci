@@ -31,7 +31,6 @@ model User {
   role      Role       @default(MEDICO)
   status    UserStatus @default(ACTIVE)
   email     String     @unique
-  cpf       String     @unique
   name      String
   hashedPwd String
   createdAt DateTime   @default(now())
