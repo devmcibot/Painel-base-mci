@@ -34,7 +34,7 @@ export default function Call({
   cpf: string | null;
   consultaId: number;
 }) {
-  // Rótulo de quem fala
+  // Quem fala
   const { data } = useSession();
   const role = (data?.user as { role?: Role } | undefined)?.role;
   const mySpeaker: "MEDICO" | "PACIENTE" =
@@ -59,6 +59,11 @@ export default function Call({
 
   // Gravação
   const [recState, setRecState] = useState<"idle" | "recording" | "paused">("idle");
+  const recStateRef = useRef<"idle" | "recording" | "paused">("idle");
+  useEffect(() => {
+    recStateRef.current = recState;
+  }, [recState]);
+
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
@@ -74,7 +79,6 @@ export default function Call({
       .on("broadcast", { event: "signal" }, async ({ payload }) => {
         const msg = payload as SignalMsg;
 
-        // Antes de a chamada começar, guarda offer/ice/answer; stt final já pode aparecer
         if (!callStartedRef.current) {
           if (msg.type === "offer" || msg.type === "answer" || msg.type === "ice") {
             pendingSignalsRef.current.push(msg);
@@ -116,6 +120,10 @@ export default function Call({
 
   // ---------- STT ----------
   function startSTT() {
+    // garante que não há instância antiga
+    try { recognizerRef.current?.stop(); } catch {}
+    recognizerRef.current = null;
+
     const SR: any =
       typeof window !== "undefined" &&
       ((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition);
@@ -152,9 +160,11 @@ export default function Call({
     };
 
     rec.onend = () => {
-      // Alguns Chrome encerram sozinho; se ainda estamos gravando, religa.
-      if (recState === "recording") {
-        try { rec.start(); } catch {}
+      // se cair durante a gravação, religa após pequeno atraso
+      if (recStateRef.current === "recording") {
+        setTimeout(() => {
+          try { rec.start(); } catch {}
+        }, 200);
       }
     };
 
@@ -177,14 +187,10 @@ export default function Call({
   }, []);
 
   function stopEverything() {
-    try {
-      recorderRef.current?.stop();
-    } catch {}
+    try { recorderRef.current?.stop(); } catch {}
     recorderRef.current = null;
 
-    try {
-      pcRef.current?.close();
-    } catch {}
+    try { pcRef.current?.close(); } catch {}
     pcRef.current = null;
 
     localStream?.getTracks().forEach((t) => t.stop());
@@ -285,17 +291,27 @@ export default function Call({
 
   // ---------- Gravação ----------
   async function startRecording() {
-    if (!localStream || !remoteStream) {
+    if (!localStream) {
       setUiError("Inicie a chamada primeiro.");
       return;
     }
-    const ac = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+    const ac = new AC();
     const dest = ac.createMediaStreamDestination();
 
+    // Sempre conecta o micro LOCAL
     const localSrc = ac.createMediaStreamSource(localStream);
-    const remoteSrc = ac.createMediaStreamSource(remoteStream);
     localSrc.connect(dest);
-    remoteSrc.connect(dest);
+
+    // Se já tiver remoto, conecta também (senão, segue só com local)
+    if (remoteStream) {
+      try {
+        const remoteSrc = ac.createMediaStreamSource(remoteStream);
+        remoteSrc.connect(dest);
+      } catch {
+        // alguns browsers podem não permitir criar source sem tracks ativas; tudo bem
+      }
+    }
 
     const mixed = new MediaStream();
     dest.stream.getAudioTracks().forEach((t) => mixed.addTrack(t));
@@ -308,7 +324,7 @@ export default function Call({
 
     recorderRef.current = mr;
     setRecState("recording");
-    startSTT(); // STT apenas durante a gravação
+    startSTT(); // STT só durante a gravação (gesto do usuário)
   }
 
   function pauseRecording() {
@@ -327,9 +343,7 @@ export default function Call({
 
   function stopRecording() {
     if (!recorderRef.current) return;
-    try {
-      recorderRef.current.stop();
-    } catch {}
+    try { recorderRef.current.stop(); } catch {}
     stopSTT();
   }
 
