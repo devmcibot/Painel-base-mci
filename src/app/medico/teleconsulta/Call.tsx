@@ -21,6 +21,9 @@ function ts() {
   )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
+// detecção bem simples de iOS (Safari mobile não tem SpeechRecognition)
+const isIOS = typeof navigator !== "undefined" && /iP(hone|ad|od)/i.test(navigator.userAgent);
+
 export default function Call({
   medicoId,
   pacienteId,
@@ -34,16 +37,13 @@ export default function Call({
   cpf: string | null;
   consultaId: number;
 }) {
-  // Quem fala
   const { data } = useSession();
   const role = (data?.user as { role?: Role } | undefined)?.role;
   const mySpeaker: "MEDICO" | "PACIENTE" =
     role === "ADMIN" || role === "MÉDICO" || role === "MEDICO" ? "MEDICO" : "PACIENTE";
 
-  // Canal realtime
   const channel = useMemo(() => sb.channel(`tele-${consultaId}`), [consultaId]);
 
-  // WebRTC
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -55,9 +55,7 @@ export default function Call({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
-  const pendingSignalsRef = useRef<SignalMsg[]>([]);
-
-  // Gravação
+  // gravação
   const [recState, setRecState] = useState<"idle" | "recording" | "paused">("idle");
   const recStateRef = useRef<"idle" | "recording" | "paused">("idle");
   useEffect(() => {
@@ -67,13 +65,16 @@ export default function Call({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
-  // Transcrição (somente finais)
+  // transcrição
   const [transcript, setTranscript] = useState<string>("");
+  const [sttSupported, setSttSupported] = useState<boolean>(false);
   const recognizerRef = useRef<SpeechRecognition | null>(null);
 
   const [uiError, setUiError] = useState<string | null>(null);
 
-  // ---------- Realtime ----------
+  const pendingSignalsRef = useRef<SignalMsg[]>([]);
+
+  // ---------------- Realtime ----------------
   useEffect(() => {
     const sub = channel
       .on("broadcast", { event: "signal" }, async ({ payload }) => {
@@ -118,19 +119,30 @@ export default function Call({
     };
   }, [channel]);
 
-  // ---------- STT ----------
+  // ---------------- STT ----------------
   function startSTT() {
-    // garante que não há instância antiga
+    // iOS não tem STT nativo — informa e sai
+    if (isIOS) {
+      setSttSupported(false);
+      setTranscript((p) => p + "\n[INFO] Transcrição ao vivo indisponível neste dispositivo (iOS).");
+      return;
+    }
+
+    // encerra instância anterior
     try { recognizerRef.current?.stop(); } catch {}
     recognizerRef.current = null;
 
     const SR: any =
       typeof window !== "undefined" &&
       ((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition);
+
     if (!SR) {
+      setSttSupported(false);
       setTranscript((p) => p + "\n[INFO] Web Speech não disponível neste navegador.");
       return;
     }
+
+    setSttSupported(true);
 
     const rec: SpeechRecognition = new SR();
     recognizerRef.current = rec;
@@ -160,7 +172,7 @@ export default function Call({
     };
 
     rec.onend = () => {
-      // se cair durante a gravação, religa após pequeno atraso
+      // reinicia enquanto ainda estivermos gravando
       if (recStateRef.current === "recording") {
         setTimeout(() => {
           try { rec.start(); } catch {}
@@ -172,13 +184,11 @@ export default function Call({
   }
 
   function stopSTT() {
-    try {
-      recognizerRef.current?.stop();
-    } catch {}
+    try { recognizerRef.current?.stop(); } catch {}
     recognizerRef.current = null;
   }
 
-  // ---------- Limpeza ----------
+  // ---------------- limpeza ----------------
   useEffect(() => {
     return () => {
       stopEverything();
@@ -208,7 +218,7 @@ export default function Call({
     pendingSignalsRef.current = [];
   }
 
-  // ---------- Chamada ----------
+  // ---------------- WebRTC ----------------
   async function initPeerConnection(withLocalStream: MediaStream) {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
@@ -233,7 +243,7 @@ export default function Call({
     return pc;
   }
 
-  // Inicia tudo de uma vez: chamada + gravação + STT
+  // ---------------- iniciar tudo (1 clique) ----------------
   async function startTele() {
     if (!roomReady) {
       setUiError("Sala ainda não pronta. Tente novamente em instantes.");
@@ -242,15 +252,22 @@ export default function Call({
     try {
       setUiError(null);
 
-      // 1) Permissão de câmera/mic
-      const local = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      // 1) micro/câmera com cancelamento de eco (melhor para mobile)
+      const local = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        } as MediaTrackConstraints,
+      });
+
       setLocalStream(local);
       if (localVideoRef.current) {
         localVideoRef.current.srcObject = local;
         await localVideoRef.current.play().catch(() => {});
       }
 
-      // 2) Conexão P2P
+      // 2) P2P
       const pc = await initPeerConnection(local);
       setCallStarted(true);
       callStartedRef.current = true;
@@ -277,9 +294,9 @@ export default function Call({
       }
       pendingSignalsRef.current = [];
 
-      // 3) Começa a GRAVAR e a STT
-      await startRecording();
-    } catch (e:any) {
+      // 3) gravação + STT (passa o stream local por parâmetro p/ evitar race no mobile)
+      await startRecording(local);
+    } catch (e: any) {
       setUiError(
         e?.name === "NotAllowedError"
           ? "Permita acesso ao microfone/câmera para iniciar."
@@ -289,28 +306,31 @@ export default function Call({
     }
   }
 
-  // ---------- Gravação ----------
-  async function startRecording() {
-    if (!localStream) {
+  // ---------------- Gravação ----------------
+  async function startRecording(localParam?: MediaStream) {
+    const baseLocal = localParam || localStream;
+    if (!baseLocal) {
       setUiError("Inicie a chamada primeiro.");
       return;
     }
+
+    // AudioContext no mobile pode começar 'suspended'
     const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
-    const ac = new AC();
+    const ac: AudioContext = new AC();
+    try { await (ac.state === "suspended" ? ac.resume() : Promise.resolve()); } catch {}
+
     const dest = ac.createMediaStreamDestination();
 
-    // Sempre conecta o micro LOCAL
-    const localSrc = ac.createMediaStreamSource(localStream);
+    // sempre conecta o micro LOCAL
+    const localSrc = ac.createMediaStreamSource(baseLocal);
     localSrc.connect(dest);
 
-    // Se já tiver remoto, conecta também (senão, segue só com local)
+    // se já tiver remoto, também conecta
     if (remoteStream) {
       try {
         const remoteSrc = ac.createMediaStreamSource(remoteStream);
         remoteSrc.connect(dest);
-      } catch {
-        // alguns browsers podem não permitir criar source sem tracks ativas; tudo bem
-      }
+      } catch {}
     }
 
     const mixed = new MediaStream();
@@ -324,7 +344,9 @@ export default function Call({
 
     recorderRef.current = mr;
     setRecState("recording");
-    startSTT(); // STT só durante a gravação (gesto do usuário)
+
+    // STT só durante a gravação (gesto do usuário)
+    startSTT();
   }
 
   function pauseRecording() {
@@ -380,7 +402,7 @@ export default function Call({
     }
   }
 
-  // ---------- UI ----------
+  // ---------------- UI ----------------
   const headerInfo = useMemo(() => `${nome} • ${cpf ?? ""}`, [nome, cpf]);
 
   return (
@@ -462,9 +484,20 @@ export default function Call({
         <span className="ml-1 text-sm">Estado: {recState}</span>
       </div>
 
-      {/* Transcrição sempre visível */}
+      {/* Transcrição */}
       <div>
         <h3 className="font-semibold mb-2">Transcrição (ao vivo)</h3>
+        {!sttSupported && !isIOS && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
+            Seu navegador pode não suportar Web Speech. Se possível, use Chrome/Edge no computador ou Android.
+          </p>
+        )}
+        {isIOS && (
+          <p className="text-xs text-slate-600 mb-2">
+            iOS/Safari não suporta transcrição ao vivo. A gravação é feita normalmente e pode ser transcrita depois.
+          </p>
+        )}
+
         <textarea
           className="w-full h-60 border rounded p-2 text-sm"
           readOnly
