@@ -361,3 +361,56 @@ export default function TeleConsultaPage() {
               onClick={stopRecording}
               disabled={recState === "idle"}
             >
+              Parar
+            </button>
+
+            <span className="ml-2 text-sm">Estado: {recState}</span>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Transcrição (ao vivo)</label>
+            <textarea
+              className="w-full border rounded p-2 h-48 font-mono text-sm"
+              readOnly
+              value={transcriptFinal + (transcriptInterim ? `\n${transcriptInterim}` : "")}
+            />
+            <p className="text-xs text-slate-500">
+              Se o navegador não suportar Web Speech, a chamada funciona normalmente, apenas sem a transcrição ao vivo.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              className="border px-3 py-2 rounded disabled:opacity-50"
+              onClick={() => salvarAudio(true)}
+              disabled={recordedChunksRef.current.length === 0}
+              title="Prepara o blob em memória (útil para validar)"
+            >
+              Salvar áudio (preparar)
+            </button>
+
+            <button
+              className="bg-green-600 text-white px-3 py-2 rounded disabled:opacity-50"
+              onClick={() => salvarAudio(false)}
+              disabled={recordedChunksRef.current.length === 0}
+            >
+              Salvar áudio + transcrição (enviar)
+            </button>
+          </div>
+
+          <div className="pt-2">
+            <button
+              className="text-sm text-slate-600 underline underline-offset-4"
+              onClick={() => {
+                stopEverything();
+                setStep(1);
+              }}
+            >
+              ← Voltar para seleção
+            </button>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}
