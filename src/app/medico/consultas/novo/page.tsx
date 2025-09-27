@@ -3,7 +3,7 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import AgendaPageClient from "./AgendaPageClient";
-import ScheduleEditor from "@/components/medico/ScheduleEditor";
+
 
 export const dynamic = "force-dynamic";
 
