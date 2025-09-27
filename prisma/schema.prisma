@@ -1,7 +1,7 @@
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")   // POOL (pgbouncer 6543)
-  directUrl = env("DIRECT_URL")     // DIRETA (5432) só para migrate
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")  // POOL (pgbouncer 6543)
+  directUrl  = env("DIRECT_URL")    // DIRETA (5432) só para migrate
 }
 
 generator client {
@@ -33,14 +33,10 @@ model User {
   email     String     @unique
   name      String
   hashedPwd String
-
-  // --- NOVOS CAMPOS ---
-  cpf       String?    @unique
-  endereco  String?
-
   createdAt DateTime   @default(now())
   updatedAt DateTime   @default(now()) @updatedAt
-  medico    Medico?
+
+  medico Medico?
 }
 
 model Medico {
@@ -57,44 +53,43 @@ model Medico {
 }
 
 model Paciente {
-  id         Int       @id @default(autoincrement())
-  medicoId   Int
-  nome       String
-  cpf        String    @unique
-  email      String?
-  telefone   String?
+  id        Int       @id @default(autoincrement())
+  medicoId  Int
+  nome      String
+  cpf       String    @unique
+  email     String?
+  telefone  String?
   nascimento DateTime?
-  endereco   String?
+  endereco  String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @default(now()) @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-
-  medico       Medico         @relation(fields: [medicoId], references: [id])
-  consultas    Consulta[]
+  medico      Medico      @relation(fields: [medicoId], references: [id])
+  consultas   Consulta[]
   AgendaEvento AgendaEvento[]
 
   @@index([medicoId])
 }
 
 model Consulta {
-  id         Int      @id @default(autoincrement())
-  medicoId   Int
-  pacienteId Int
-  data       DateTime
-  status     Status   @default(ABERTA)
+  id            Int        @id @default(autoincrement())
+  medicoId      Int
+  pacienteId    Int
+  data          DateTime
+  status        Status     @default(ABERTA)
 
   // caminhos de arquivos no Storage (opcionais)
-  pastaPath       String?
+  pastaPath     String?
   preAnamnesePath String?
-  audioPath       String?
-  anamnesePath    String?
-  relatorioPath   String?
+  audioPath     String?
+  anamnesePath  String?
+  relatorioPath String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  medico       Medico         @relation(fields: [medicoId], references: [id], onDelete: Restrict)
-  paciente     Paciente       @relation(fields: [pacienteId], references: [id], onDelete: Restrict)
+  medico       Medico    @relation(fields: [medicoId], references: [id], onDelete: Restrict)
+  paciente     Paciente  @relation(fields: [pacienteId], references: [id], onDelete: Restrict)
   Transcript   Transcript[]
   AgendaEvento AgendaEvento[]
   ExternalLink ExternalLink[]
@@ -106,29 +101,29 @@ model Consulta {
 }
 
 model Transcript {
-  id         Int      @id @default(autoincrement())
+  id        Int      @id @default(autoincrement())
   consultaId Int
-  text       String
-  createdAt  DateTime @default(now())
+  text      String
+  createdAt DateTime @default(now())
 
   consulta Consulta @relation(fields: [consultaId], references: [id], onDelete: Cascade)
 }
 
 model AgendaEvento {
-  id         Int      @id @default(autoincrement())
-  medicoId   Int
-  pacienteId Int?
-  consultaId Int?
-  titulo     String
-  inicio     DateTime
-  fim        DateTime
-  origem     String // "whatsapp" | "manual" | "n8n"
+  id              Int       @id @default(autoincrement())
+  medicoId        Int
+  pacienteId      Int?
+  consultaId      Int?
+  titulo          String
+  inicio          DateTime
+  fim             DateTime
+  origem          String    // "whatsapp" | "manual" | "n8n"
 
   // Para eventos sincronizados sem consulta vinculada
-  googleEventId    String?
+  googleEventId   String?
   googleCalendarId String?
 
-  medico   Medico    @relation(fields: [medicoId], references: [id])
+  medico   Medico   @relation(fields: [medicoId], references: [id])
   paciente Paciente? @relation(fields: [pacienteId], references: [id], onDelete: SetNull)
   consulta Consulta? @relation(fields: [consultaId], references: [id], onDelete: SetNull)
 
@@ -136,13 +131,14 @@ model AgendaEvento {
   @@index([medicoId])
   @@index([pacienteId])
   @@index([consultaId])
+
   // Índices para performance no calendário
   @@index([medicoId, inicio])
   @@index([medicoId, fim])
 }
 
 model ExternalLink {
-  id         Int     @id @default(autoincrement())
+  id         Int    @id @default(autoincrement())
   consultaId Int
   provider   String // "google"
   externalId String // google_event_id
@@ -162,11 +158,11 @@ model ExternalLink {
 // Disponibilidade recorrente do médico (0=Dom ... 6=Sáb)
 // Horário salvo em minutos a partir de 00:00 do TZ do médico (ex.: 09:00 => 540)
 model MedicoHorario {
-  id       Int     @id @default(autoincrement())
+  id       Int  @id @default(autoincrement())
   medicoId Int
-  weekday  Int // 0..6
-  startMin Int // ex.: 540 (09:00)
-  endMin   Int // ex.: 1020 (17:00)
+  weekday  Int  // 0..6
+  startMin Int  // ex.: 540 (09:00)
+  endMin   Int  // ex.: 1020 (17:00)
   isActive Boolean @default(true)
 
   medico Medico @relation(fields: [medicoId], references: [id], onDelete: Cascade)
