@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 /** =================== Tipos =================== */
@@ -439,46 +440,79 @@ function HoursEditor({
   );
 }
 
-{/* Lista de próximos eventos */}
-<div className="mt-4">
-  <h3 className="font-semibold text-sm mb-2">Próximos eventos (14 dias)</h3>
-  <ul className="border rounded">
-    {eventos.map((ev) => (
-      <li key={ev.id} className="flex items-center justify-between px-2 py-1 border-t text-sm">
-        {/* Info somente leitura */}
-        <div className="truncate">
-          <span className="font-medium">#{ev.id}</span>
-          {" · "}
-          <span>{ev.titulo || "Consulta"}</span>
-          {" — "}
-          <span>
-            {formatDate(ev.inicio)} — {formatDate(ev.fim)}
-          </span>
-          {ev.paciente && (
-            <>
-              {" · "}
-              <span className="text-gray-600">
-                {ev.paciente.nome}
-              </span>
-            </>
-          )}
-        </div>
+/** =================== Próximos eventos (14 dias) =================== */
+function UpcomingEvents({
+  registerReload,
+}: {
+  registerReload: (fn: () => Promise<void>) => void;
+}) {
+  const [items, setItems] = useState<
+    { id: number; titulo: string; inicio: string; fim: string; paciente?: { id: number; nome: string } }[]
+  >([]);
+  const [msg, setMsg] = useState<string | null>(null);
 
-        {/* Apenas Cancelar */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => handleCancelar(ev.id)}
-            className="px-3 py-1 rounded bg-red-600 text-white hover:bg-red-700"
-            title="Cancelar evento"
-          >
-            Cancelar
-          </button>
-        </div>
-      </li>
-    ))}
-    {eventos.length === 0 && (
-      <li className="px-2 py-2 text-gray-500">Nenhum evento encontrado.</li>
-    )}
-  </ul>
-</div>
+  const load = async () => {
+    const r = await fetch("/api/calendar/events/upcoming?days=14", { cache: "no-store" });
+    const j = await r.json();
+    setItems(j?.eventos ?? []);
+  };
 
+  useEffect(() => {
+    registerReload(load);
+    load();
+  }, []); // eslint-disable-line
+
+  async function cancel(id: number) {
+    setMsg(null);
+    const r = await fetch(`/api/calendar/events/${id}`, { method: "DELETE" });
+    if (r.ok) {
+      setMsg(`Evento #${id} cancelado.`);
+      await load();
+    } else {
+      const j = await r.json();
+      setMsg(`Erro ao cancelar: ${j?.error ?? r.statusText}`);
+    }
+  }
+
+  return (
+    <div className="p-3 border rounded">
+      <div className="font-medium mb-2">Próximos eventos (14 dias)</div>
+      {msg && <div className="text-sm mb-2">{msg}</div>}
+      {items.length === 0 ? (
+        <div className="text-sm text-gray-600">Nenhum evento.</div>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((ev) => (
+            <li key={ev.id} className="border rounded p-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="font-medium">
+                    #{ev.id} · {ev.titulo}
+                    {ev.paciente ? ` · ${ev.paciente.nome}` : ""}
+                  </div>
+                  <div className="text-sm">
+                    {asLocal(ev.inicio)} — {asLocal(ev.fim)}
+                  </div>
+                </div>
+
+                {/* Só Cancelar + Editar */}
+                <div className="flex items-center gap-2">
+                  <button onClick={() => cancel(ev.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">
+                    Cancelar
+                  </button>
+                  <Link
+                    href={`/medico/consultas/${ev.id}`}
+                    className="bg-gray-700 text-white px-3 py-1.5 rounded"
+                    title="Editar consulta"
+                  >
+                    Editar
+                  </Link>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
