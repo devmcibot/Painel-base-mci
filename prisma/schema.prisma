@@ -33,6 +33,11 @@ model User {
   email     String     @unique
   name      String
   hashedPwd String
+
+  // --- NOVOS CAMPOS ---
+  cpf       String?    @unique
+  endereco  String?
+
   createdAt DateTime   @default(now())
   updatedAt DateTime   @default(now()) @updatedAt
   medico    Medico?
