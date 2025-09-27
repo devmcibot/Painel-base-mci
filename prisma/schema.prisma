@@ -161,7 +161,7 @@ model MedicoHorario {
   id       Int  @id @default(autoincrement())
   medicoId Int
   weekday  Int  // 0..6
-  startMin Int  // ex.: 540 (09:00)
+  startMin Int  // ex.: 540 (08:00)
   endMin   Int  // ex.: 1020 (19:00)
   isActive Boolean @default(true)
 
