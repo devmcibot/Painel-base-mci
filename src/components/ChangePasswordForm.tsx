@@ -17,7 +17,6 @@ export default function ChangePasswordForm({ userId }: { userId: number }) {
     const fd = new FormData();
     fd.set("oldPassword", oldPassword);
     fd.set("newPassword", newPassword);
-
     const res = await changePassword(userId, fd);
 
     if (res?.error) setMsg(res.error);
@@ -38,7 +37,7 @@ export default function ChangePasswordForm({ userId }: { userId: number }) {
           <label className="label">Senha atual</label>
           <input
             type="password"
-            className="input"
+            className="w-full border rounded px-3 py-2"
             value={oldPassword}
             onChange={(e) => setOldPassword(e.target.value)}
             required
@@ -48,7 +47,7 @@ export default function ChangePasswordForm({ userId }: { userId: number }) {
           <label className="label">Nova senha</label>
           <input
             type="password"
-            className="input"
+            className="w-full border rounded px-3 py-2"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             minLength={6}
