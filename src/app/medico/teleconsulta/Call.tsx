@@ -1,3 +1,4 @@
+// src/app/medico/teleconsulta/Call.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -33,15 +34,16 @@ export default function Call({
   cpf: string | null;
   consultaId: number;
 }) {
-  // Quem sou eu (rótulo de fala)
+  // Rótulo de quem fala
   const { data } = useSession();
   const role = (data?.user as { role?: Role } | undefined)?.role;
   const mySpeaker: "MEDICO" | "PACIENTE" =
     role === "ADMIN" || role === "MÉDICO" || role === "MEDICO" ? "MEDICO" : "PACIENTE";
 
-  // ---- Refs/Estados principais
+  // Canal realtime
   const channel = useMemo(() => sb.channel(`tele-${consultaId}`), [consultaId]);
 
+  // WebRTC
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -53,7 +55,6 @@ export default function Call({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
-  // Fila de sinais que chegaram antes de eu entrar
   const pendingSignalsRef = useRef<SignalMsg[]>([]);
 
   // Gravação
@@ -61,30 +62,29 @@ export default function Call({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
-  // Transcrição (apenas finais para evitar duplicação)
+  // Transcrição (somente finais)
   const [transcript, setTranscript] = useState<string>("");
   const recognizerRef = useRef<SpeechRecognition | null>(null);
 
   const [uiError, setUiError] = useState<string | null>(null);
 
-  // ------------------- Realtime (supabase) -------------------
+  // ---------- Realtime ----------
   useEffect(() => {
     const sub = channel
       .on("broadcast", { event: "signal" }, async ({ payload }) => {
         const msg = payload as SignalMsg;
-        // Se não comecei a chamada ainda, guarda para depois
+
+        // Antes de a chamada começar, guarda offer/ice/answer; stt final já pode aparecer
         if (!callStartedRef.current) {
-          if (msg.type === "offer" || msg.type === "ice" || msg.type === "answer") {
+          if (msg.type === "offer" || msg.type === "answer" || msg.type === "ice") {
             pendingSignalsRef.current.push(msg);
           }
-          // stt final pode ser armazenado sem PC
           if (msg.type === "stt" && msg.final) {
-            setTranscript((prev) => (msg.text ? prev + `\n[${msg.speaker}] ${msg.text}` : prev));
+            setTranscript((p) => (msg.text ? p + `\n[${msg.speaker}] ${msg.text}` : p));
           }
           return;
         }
 
-        // Com chamada ativa:
         try {
           const pc = pcRef.current;
           if (!pc) return;
@@ -99,7 +99,7 @@ export default function Call({
           } else if (msg.type === "ice" && msg.candidate) {
             await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
           } else if (msg.type === "stt" && msg.final) {
-            setTranscript((prev) => (msg.text ? prev + `\n[${msg.speaker}] ${msg.text}` : prev));
+            setTranscript((p) => (msg.text ? p + `\n[${msg.speaker}] ${msg.text}` : p));
           }
         } catch (e: any) {
           setUiError(`Erro na sinalização: ${e?.message || String(e)}`);
@@ -114,7 +114,7 @@ export default function Call({
     };
   }, [channel]);
 
-  // ------------------- Helpers de STT -------------------
+  // ---------- STT ----------
   function startSTT() {
     const SR: any =
       typeof window !== "undefined" &&
@@ -131,15 +131,15 @@ export default function Call({
     rec.interimResults = true;
 
     rec.onresult = (e: SpeechRecognitionEvent) => {
-      const finalsToAppend: string[] = [];
+      const finals: string[] = [];
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i];
         const text = (r[0]?.transcript || "").trim();
         if (!text) continue;
 
         if (r.isFinal) {
-          finalsToAppend.push(text);
-          // broadcast apenas finais
+          finals.push(text);
+          // broadcast só finais
           channel.send({
             type: "broadcast",
             event: "signal",
@@ -147,13 +147,9 @@ export default function Call({
           });
         }
       }
-      if (finalsToAppend.length) {
-        setTranscript((prev) => prev + finalsToAppend.map((t) => `\n[${mySpeaker}] ${t}`).join(""));
+      if (finals.length) {
+        setTranscript((p) => p + finals.map((t) => `\n[${mySpeaker}] ${t}`).join(""));
       }
-    };
-    rec.onerror = () => {};
-    rec.onend = () => {
-      /* não reinicia automático; retomamos quando usuário quiser */
     };
 
     try {
@@ -168,7 +164,7 @@ export default function Call({
     recognizerRef.current = null;
   }
 
-  // ------------------- Lifecycle limpeza -------------------
+  // ---------- Limpeza ----------
   useEffect(() => {
     return () => {
       stopEverything();
@@ -177,13 +173,11 @@ export default function Call({
   }, []);
 
   function stopEverything() {
-    // Recorder
     try {
       recorderRef.current?.stop();
     } catch {}
     recorderRef.current = null;
 
-    // PC & mídia
     try {
       pcRef.current?.close();
     } catch {}
@@ -201,18 +195,16 @@ export default function Call({
     setRecState("idle");
     setCallStarted(false);
     callStartedRef.current = false;
-
     pendingSignalsRef.current = [];
   }
 
-  // ------------------- Fluxo da Chamada -------------------
+  // ---------- Chamada ----------
   async function initPeerConnection(withLocalStream: MediaStream) {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
     });
     pcRef.current = pc;
 
-    // Remote stream
     const remote = new MediaStream();
     setRemoteStream(remote);
     pc.ontrack = (ev) => {
@@ -220,7 +212,6 @@ export default function Call({
       if (remoteVideoRef.current) remoteVideoRef.current.srcObject = remote;
     };
 
-    // ICE
     pc.onicecandidate = (ev) => {
       if (ev.candidate) {
         const msg: SignalMsg = { type: "ice", candidate: ev.candidate.toJSON() };
@@ -228,21 +219,18 @@ export default function Call({
       }
     };
 
-    // Local tracks
     withLocalStream.getTracks().forEach((t) => pc.addTrack(t, withLocalStream));
-
     return pc;
   }
 
   async function startCall() {
     if (!roomReady) {
-      setUiError("Sala ainda não pronta. Tente novamente em alguns segundos.");
+      setUiError("Sala ainda não pronta. Tente novamente em instantes.");
       return;
     }
     try {
       setUiError(null);
 
-      // Pede permissão só agora
       const local = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       setLocalStream(local);
       if (localVideoRef.current) {
@@ -251,12 +239,9 @@ export default function Call({
       }
 
       const pc = await initPeerConnection(local);
-
-      // Marcar estado
       setCallStarted(true);
       callStartedRef.current = true;
 
-      // Se já chegou offer antes de eu entrar → responde
       const queuedOffer = pendingSignalsRef.current.find((m) => m.type === "offer") as
         | { type: "offer"; sdp: RTCSessionDescriptionInit }
         | undefined;
@@ -267,13 +252,11 @@ export default function Call({
         await pc.setLocalDescription(ans);
         channel.send({ type: "broadcast", event: "signal", payload: { type: "answer", sdp: ans } });
       } else {
-        // Eu inicio como caller
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
         channel.send({ type: "broadcast", event: "signal", payload: { type: "offer", sdp: offer } });
       }
 
-      // Reaplica ICE candidates pendentes
       for (const sig of pendingSignalsRef.current) {
         if (sig.type === "ice" && sig.candidate) {
           try {
@@ -292,19 +275,17 @@ export default function Call({
     }
   }
 
-  // ------------------- Gravação -------------------
+  // ---------- Gravação ----------
   async function startRecording() {
     if (!localStream || !remoteStream) {
       setUiError("Inicie a chamada primeiro.");
       return;
     }
-
     const ac = new AudioContext();
     const dest = ac.createMediaStreamDestination();
 
     const localSrc = ac.createMediaStreamSource(localStream);
     const remoteSrc = ac.createMediaStreamSource(remoteStream);
-
     localSrc.connect(dest);
     remoteSrc.connect(dest);
 
@@ -315,43 +296,41 @@ export default function Call({
     chunksRef.current = [];
     mr.ondataavailable = (e) => e.data && e.data.size > 0 && chunksRef.current.push(e.data);
     mr.onstop = () => setRecState("idle");
-
     mr.start(1000);
+
     recorderRef.current = mr;
     setRecState("recording");
-
-    // STT começa somente quando iniciamos a gravação
-    startSTT();
+    startSTT(); // STT apenas durante a gravação
   }
 
   function pauseRecording() {
     if (recState !== "recording") return;
     recorderRef.current?.pause();
     setRecState("paused");
-    stopSTT(); // pausa STT
+    stopSTT();
   }
 
   function resumeRecording() {
     if (recState !== "paused") return;
     recorderRef.current?.resume();
     setRecState("recording");
-    startSTT(); // retoma STT
+    startSTT();
   }
 
-  async function stopAndUpload() {
+  function stopRecording() {
     if (!recorderRef.current) return;
     try {
       recorderRef.current.stop();
     } catch {}
-
     stopSTT();
+  }
 
+  async function uploadSaved() {
     const blob = new Blob(chunksRef.current, { type: "audio/webm" });
     if (blob.size === 0) {
-      setUiError("Nada gravado.");
+      setUiError("Nada gravado para enviar.");
       return;
     }
-
     try {
       const timestamp = ts();
       const form = new FormData();
@@ -368,21 +347,18 @@ export default function Call({
           transcript,
         })
       );
-
       const resp = await fetch("/api/tele/save", { method: "POST", body: form });
       if (!resp.ok) {
         const j = await resp.json().catch(() => ({}));
         throw new Error(j.error || `HTTP ${resp.status}`);
       }
-
       alert("Tele-consulta salva com sucesso!");
-      setRecState("idle");
     } catch (e: any) {
       setUiError(`Falha ao salvar: ${e?.message || String(e)}`);
     }
   }
 
-  // ------------------- UI -------------------
+  // ---------- UI ----------
   const headerInfo = useMemo(() => `${nome} • ${cpf ?? ""}`, [nome, cpf]);
 
   return (
@@ -395,73 +371,93 @@ export default function Call({
         </div>
       )}
 
+      {/* Vídeos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <video ref={localVideoRef} autoPlay playsInline muted className="w-full rounded-xl border" />
-        <video ref={remoteVideoRef} autoPlay playsInline className="w-full rounded-xl border" />
+        <video ref={localVideoRef} autoPlay playsInline muted className="w-full aspect-video rounded-xl border" />
+        <video ref={remoteVideoRef} autoPlay playsInline className="w-full aspect-video rounded-xl border" />
       </div>
 
       {/* Controles da chamada */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {!callStarted ? (
-          <button className="bg-blue-600 text-white rounded px-4 py-2" onClick={startCall} disabled={!roomReady}>
+          <button
+            className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50"
+            onClick={startCall}
+            disabled={!roomReady}
+          >
             Iniciar chamada
           </button>
         ) : (
-          <button
-            className="border rounded px-4 py-2"
-            onClick={stopEverything}
-            title="Finaliza chamada e libera câmera/mic"
-          >
+          <button className="border rounded px-4 py-2" onClick={stopEverything}>
             Encerrar chamada
           </button>
         )}
         {!roomReady && <span className="text-sm text-slate-500">Conectando à sala…</span>}
       </div>
 
-      {/* Controles de gravação – só após iniciar a chamada */}
-      {callStarted && (
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="bg-black text-white px-3 py-2 rounded disabled:opacity-50"
-              onClick={startRecording}
-              disabled={recState !== "idle"}
-            >
-              Iniciar gravação
-            </button>
-            <button
-              className="border px-3 py-2 rounded disabled:opacity-50"
-              onClick={pauseRecording}
-              disabled={recState !== "recording"}
-            >
-              Pausar
-            </button>
-            <button
-              className="border px-3 py-2 rounded disabled:opacity-50"
-              onClick={resumeRecording}
-              disabled={recState !== "paused"}
-            >
-              Continuar
-            </button>
-            <button
-              className="bg-green-600 text-white px-3 py-2 rounded disabled:opacity-50"
-              onClick={stopAndUpload}
-              disabled={recState === "idle"}
-            >
-              Parar & Salvar
-            </button>
-            <span className="ml-2 text-sm">Estado: {recState}</span>
-          </div>
+      {/* Controles de gravação — iguais à Anamnese */}
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          className="bg-black text-white px-3 py-2 rounded disabled:opacity-50"
+          onClick={startRecording}
+          disabled={!callStarted || recState !== "idle"}
+        >
+          Iniciar gravação
+        </button>
+        <button
+          className="border px-3 py-2 rounded disabled:opacity-50"
+          onClick={pauseRecording}
+          disabled={recState !== "recording"}
+        >
+          Pausar
+        </button>
+        <button
+          className="border px-3 py-2 rounded disabled:opacity-50"
+          onClick={resumeRecording}
+          disabled={recState !== "paused"}
+        >
+          Continuar
+        </button>
+        <button
+          className="border px-3 py-2 rounded disabled:opacity-50"
+          onClick={stopRecording}
+          disabled={recState === "idle"}
+        >
+          Parar
+        </button>
 
-          <div>
-            <h3 className="font-semibold mb-2">Transcrição (ao vivo)</h3>
-            <textarea className="w-full h-60 border rounded p-2 text-sm" value={transcript} readOnly />
-            <p className="text-xs text-gray-500 mt-1">
-              Para evitar duplicações, apenas frases **finais** são adicionadas e compartilhadas.
-            </p>
-          </div>
-        </>
-      )}
+        <button
+          className="border px-3 py-2 rounded disabled:opacity-50"
+          onClick={() => alert("Áudio preparado em memória.")}
+          disabled={chunksRef.current.length === 0}
+          title="Prepara o blob (igual Anamnese)"
+        >
+          Salvar áudio (preparar)
+        </button>
+        <button
+          className="bg-green-600 text-white px-3 py-2 rounded disabled:opacity-50"
+          onClick={uploadSaved}
+          disabled={chunksRef.current.length === 0}
+        >
+          Salvar áudio + transcrição (enviar)
+        </button>
+
+        <span className="ml-1 text-sm">Estado: {recState}</span>
+      </div>
+
+      {/* Transcrição sempre visível */}
+      <div>
+        <h3 className="font-semibold mb-2">Transcrição (ao vivo)</h3>
+        <textarea
+          className="w-full h-60 border rounded p-2 text-sm"
+          readOnly
+          value={transcript}
+          placeholder="A transcrição aparecerá aqui durante a gravação…"
+        />
+        <p className="text-xs text-slate-500">
+          A transcrição usa Web Speech no navegador e só adiciona frases finais (sem duplicar parciais).
+        </p>
+      </div>
     </div>
   );
 }
