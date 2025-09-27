@@ -139,7 +139,6 @@ export default function Call({
 
         if (r.isFinal) {
           finals.push(text);
-          // broadcast só finais
           channel.send({
             type: "broadcast",
             event: "signal",
@@ -152,9 +151,14 @@ export default function Call({
       }
     };
 
-    try {
-      rec.start();
-    } catch {}
+    rec.onend = () => {
+      // Alguns Chrome encerram sozinho; se ainda estamos gravando, religa.
+      if (recState === "recording") {
+        try { rec.start(); } catch {}
+      }
+    };
+
+    try { rec.start(); } catch {}
   }
 
   function stopSTT() {
@@ -223,7 +227,8 @@ export default function Call({
     return pc;
   }
 
-  async function startCall() {
+  // Inicia tudo de uma vez: chamada + gravação + STT
+  async function startTele() {
     if (!roomReady) {
       setUiError("Sala ainda não pronta. Tente novamente em instantes.");
       return;
@@ -231,6 +236,7 @@ export default function Call({
     try {
       setUiError(null);
 
+      // 1) Permissão de câmera/mic
       const local = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       setLocalStream(local);
       if (localVideoRef.current) {
@@ -238,6 +244,7 @@ export default function Call({
         await localVideoRef.current.play().catch(() => {});
       }
 
+      // 2) Conexão P2P
       const pc = await initPeerConnection(local);
       setCallStarted(true);
       callStartedRef.current = true;
@@ -259,17 +266,18 @@ export default function Call({
 
       for (const sig of pendingSignalsRef.current) {
         if (sig.type === "ice" && sig.candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(sig.candidate));
-          } catch {}
+          try { await pc.addIceCandidate(new RTCIceCandidate(sig.candidate)); } catch {}
         }
       }
       pendingSignalsRef.current = [];
-    } catch (e: any) {
+
+      // 3) Começa a GRAVAR e a STT
+      await startRecording();
+    } catch (e:any) {
       setUiError(
         e?.name === "NotAllowedError"
-          ? "Permita acesso ao microfone/câmera para iniciar a chamada."
-          : `Erro ao iniciar chamada: ${e?.message || String(e)}`
+          ? "Permita acesso ao microfone/câmera para iniciar."
+          : `Erro ao iniciar: ${e?.message || String(e)}`
       );
       stopEverything();
     }
@@ -281,7 +289,7 @@ export default function Call({
       setUiError("Inicie a chamada primeiro.");
       return;
     }
-    const ac = new AudioContext();
+    const ac = new (window.AudioContext || (window as any).webkitAudioContext)();
     const dest = ac.createMediaStreamDestination();
 
     const localSrc = ac.createMediaStreamSource(localStream);
@@ -377,33 +385,27 @@ export default function Call({
         <video ref={remoteVideoRef} autoPlay playsInline className="w-full aspect-video rounded-xl border" />
       </div>
 
-      {/* Controles da chamada */}
+      {/* Controles principais */}
       <div className="flex flex-wrap items-center gap-2">
-        {!callStarted ? (
-          <button
-            className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50"
-            onClick={startCall}
-            disabled={!roomReady}
-          >
-            Iniciar chamada
-          </button>
-        ) : (
+        <button
+          className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50"
+          onClick={startTele}
+          disabled={callStarted || !roomReady || recState !== "idle"}
+        >
+          Iniciar teleconsulta (chamada + gravação)
+        </button>
+
+        {callStarted && (
           <button className="border rounded px-4 py-2" onClick={stopEverything}>
             Encerrar chamada
           </button>
         )}
+
         {!roomReady && <span className="text-sm text-slate-500">Conectando à sala…</span>}
       </div>
 
-      {/* Controles de gravação — iguais à Anamnese */}
+      {/* Controles de gravação */}
       <div className="flex flex-wrap items-center gap-2">
-        <button
-          className="bg-black text-white px-3 py-2 rounded disabled:opacity-50"
-          onClick={startRecording}
-          disabled={!callStarted || recState !== "idle"}
-        >
-          Iniciar gravação
-        </button>
         <button
           className="border px-3 py-2 rounded disabled:opacity-50"
           onClick={pauseRecording}
@@ -422,24 +424,25 @@ export default function Call({
           className="border px-3 py-2 rounded disabled:opacity-50"
           onClick={stopRecording}
           disabled={recState === "idle"}
+          title="Interrompe a gravação (áudio fica em memória)"
         >
-          Parar
+          Finalizar Tele-Consulta
         </button>
 
         <button
           className="border px-3 py-2 rounded disabled:opacity-50"
           onClick={() => alert("Áudio preparado em memória.")}
           disabled={chunksRef.current.length === 0}
-          title="Prepara o blob (igual Anamnese)"
+          title="Prepara o blob para envio"
         >
-          Salvar áudio (preparar)
+          Preparar para salvar
         </button>
         <button
           className="bg-green-600 text-white px-3 py-2 rounded disabled:opacity-50"
           onClick={uploadSaved}
           disabled={chunksRef.current.length === 0}
         >
-          Salvar áudio + transcrição (enviar)
+          Salvar Tele-consulta
         </button>
 
         <span className="ml-1 text-sm">Estado: {recState}</span>
