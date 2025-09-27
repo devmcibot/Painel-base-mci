@@ -8,7 +8,6 @@ const prisma = new PrismaClient();
 // Atualiza o nome do médico com validação manual
 export async function updateProfile(userId: number, formData: FormData) {
   const name = formData.get("name");
-  const email = formData.get ("email");
 
   // Validação manual em vez de Zod
   if (!name || typeof name !== "string" || name.trim().length < 3) {
