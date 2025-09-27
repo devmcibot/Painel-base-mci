@@ -1,121 +1,135 @@
 // src/app/api/medico/horario/route.ts
-import { NextResponse } from "next/server";
-import { PrismaClient } from "@prisma/client";
+import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { prisma } from "@/lib/prisma";
 
-const prisma = new PrismaClient();
-
-function hhmmToMin(hhmm: string) {
-  const [h, m] = hhmm.split(":").map(Number);
+function parseHHMM(s: string) {
+  const [h, m] = s.split(":").map(Number);
   return h * 60 + m;
 }
-function minToHHMM(min: number) {
-  const h = String(Math.floor(min / 60)).padStart(2, "0");
-  const m = String(min % 60).padStart(2, "0");
-  return `${h}:${m}`;
-}
 
-// Normaliza para o cliente: { weekday, intervals: [{startMin,endMin}, ...] }
-async function readAll(medicoId: number) {
-  const rows = await prisma.medicoHorario.findMany({
-    where: { medicoId, isActive: true },
-    orderBy: [{ weekday: "asc" }, { startMin: "asc" }],
-  });
-  const byDay: Record<number, { startMin: number; endMin: number }[]> = {};
-  for (const r of rows) {
-    byDay[r.weekday] ??= [];
-    byDay[r.weekday].push({ startMin: r.startMin, endMin: r.endMin });
-  }
-  return Object.entries(byDay).map(([weekday, intervals]) => ({
-    weekday: Number(weekday),
-    intervals,
-  }));
-}
+export const dynamic = "force-dynamic";
 
-// --- GET: lista horários (agora com vários intervalos por dia)
+/**
+ * GET: lista horários do médico
+ */
 export async function GET() {
-  const session = await getServerSession(authOptions);
-  const medicoId = (session?.user as any)?.medicoId as number | undefined;
-  if (!medicoId) return NextResponse.json({ error: "no medico" }, { status: 401 });
-
-  const horarios = await readAll(medicoId);
-  return NextResponse.json({ horarios });
-}
-
-// --- POST: criar padrão (um intervalo Seg–Sex 09:00–17:00)
-export async function POST() {
-  const session = await getServerSession(authOptions);
-  const medicoId = (session?.user as any)?.medicoId as number | undefined;
-  if (!medicoId) return NextResponse.json({ error: "no medico" }, { status: 401 });
-
-  await prisma.$transaction([
-    prisma.medicoHorario.deleteMany({ where: { medicoId } }),
-    prisma.medicoHorario.createMany({
-      data: [1, 2, 3, 4, 5].map((weekday) => ({
-        medicoId,
-        weekday,
-        startMin: hhmmToMin("09:00"),
-        endMin: hhmmToMin("17:00"),
-        isActive: true,
-      })),
-    }),
-  ]);
-
-  const horarios = await readAll(medicoId);
-  return NextResponse.json({ horarios }, { status: 201 });
-}
-
-// --- PUT: substitui tudo com vários intervalos por dia
-// Body esperado:
-// { replace: true, items: [{ weekday: 1..6, enabled: boolean, slots: [{start:"09:00", end:"12:00"}, ...] }, ...] }
-export async function PUT(req: Request) {
-  const session = await getServerSession(authOptions);
-  const medicoId = (session?.user as any)?.medicoId as number | undefined;
-  if (!medicoId) return NextResponse.json({ error: "no medico" }, { status: 401 });
-
-  const body = await req.json().catch(() => ({}));
-  const items = (body?.items ?? []) as Array<{
-    weekday: number;
-    enabled?: boolean;
-    slots?: Array<{ start: string; end: string }>;
-  }>;
-
-  // validação básica e sobreposição
-  for (const it of items) {
-    if (!it.enabled) continue;
-    const slots = (it.slots ?? [])
-      .map((s) => ({ startMin: hhmmToMin(s.start), endMin: hhmmToMin(s.end) }))
-      .filter((s) => s.startMin < s.endMin)
-      .sort((a, b) => a.startMin - b.startMin);
-
-    for (let i = 1; i < slots.length; i++) {
-      if (slots[i].startMin < slots[i - 1].endMin) {
-        return NextResponse.json(
-          { error: `Intervalos sobrepostos em ${it.weekday}` },
-          { status: 400 }
-        );
-      }
+  try {
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    if (!session || !medicoId) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
-  }
 
-  // persiste
-  await prisma.$transaction(async (tx) => {
-    await tx.medicoHorario.deleteMany({ where: { medicoId } });
-    const data = items
-      .filter((it) => it.enabled && (it.slots ?? []).length > 0)
-      .flatMap((it) =>
-        (it.slots ?? []).map((s) => ({
+    const horarios = await prisma.medicoHorario.findMany({
+      where: { medicoId },
+      orderBy: [{ weekday: "asc" }, { startMin: "asc" }],
+    });
+
+    return NextResponse.json({ horarios }, { status: 200 });
+  } catch (e) {
+    console.error("[medico.horario][GET]", e);
+    return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
+  }
+}
+
+/**
+ * POST: cria um mesmo intervalo para vários dias (ex.: padrão Seg–Sex 09–17)
+ * body: { weekdays:number[], start:"HH:mm", end:"HH:mm", replace?:boolean }
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    if (!session || !medicoId) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const body = (await req.json()) as {
+      weekdays: number[];
+      start: string;
+      end: string;
+      replace?: boolean;
+    };
+
+    const startMin = parseHHMM(body.start);
+    const endMin = parseHHMM(body.end);
+
+    await prisma.$transaction(async (tx) => {
+      if (body.replace) {
+        await tx.medicoHorario.deleteMany({ where: { medicoId } });
+      }
+      if (Array.isArray(body.weekdays)) {
+        await tx.medicoHorario.createMany({
+          data: body.weekdays.map((wd) => ({
+            medicoId,
+            weekday: wd,
+            startMin,
+            endMin,
+          })),
+          skipDuplicates: true,
+        });
+      }
+    });
+
+    const horarios = await prisma.medicoHorario.findMany({
+      where: { medicoId },
+      orderBy: [{ weekday: "asc" }, { startMin: "asc" }],
+    });
+
+    return NextResponse.json({ created: horarios.length, horarios }, { status: 201 });
+  } catch (e) {
+    console.error("[medico.horario][POST]", e);
+    return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
+  }
+}
+
+/**
+ * PUT: substitui todos os horários por uma grade manual (um intervalo por dia)
+ * body: { replace?: boolean; items: { weekday:number; start:"HH:mm"; end:"HH:mm"; enabled?:boolean }[] }
+ */
+export async function PUT(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    if (!session || !medicoId) {
+      return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
+    }
+
+    const body = (await req.json()) as {
+      replace?: boolean;
+      items: { weekday: number; start: string; end: string; enabled?: boolean }[];
+    };
+
+    const rows =
+      (body.items || [])
+        .filter((it) => it.enabled !== false && typeof it.weekday === "number" && it.start && it.end)
+        .map((it) => ({
           medicoId,
           weekday: it.weekday,
-          startMin: hhmmToMin(s.start),
-          endMin: hhmmToMin(s.end),
-          isActive: true,
-        }))
-      );
-    if (data.length) await tx.medicoHorario.createMany({ data });
-  });
+          startMin: parseHHMM(it.start),
+          endMin: parseHHMM(it.end),
+        })) ?? [];
 
-  const horarios = await readAll(medicoId);
-  return NextResponse.json({ horarios });
+    await prisma.$transaction(async (tx) => {
+      if (body.replace !== false) {
+        await tx.medicoHorario.deleteMany({ where: { medicoId } });
+      }
+      if (rows.length) {
+        await tx.medicoHorario.createMany({ data: rows });
+      }
+    });
+
+    const horarios = await prisma.medicoHorario.findMany({
+      where: { medicoId },
+      orderBy: [{ weekday: "asc" }, { startMin: "asc" }],
+    });
+
+    return NextResponse.json({ updated: rows.length, horarios }, { status: 201 });
+  } catch (e) {
+    console.error("[medico.horario][PUT]", e);
+    return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
+  }
 }
+
