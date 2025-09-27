@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 /** =================== Tipos =================== */
@@ -440,7 +439,7 @@ function HoursEditor({
   );
 }
 
-/** =================== Próximos eventos (14 dias) =================== */
+/** =================== Próximos eventos (14 dias) — versão simplificada =================== */
 function UpcomingEvents({
   registerReload,
 }: {
@@ -494,19 +493,17 @@ function UpcomingEvents({
                     {asLocal(ev.inicio)} — {asLocal(ev.fim)}
                   </div>
                 </div>
-
-                {/* Só Cancelar + Editar */}
                 <div className="flex items-center gap-2">
+                  <a
+                    href="/medico/consultas"
+                    className="bg-gray-700 text-white px-3 py-1.5 rounded"
+                    title="Ver na lista de consultas"
+                  >
+                    Ver na lista
+                  </a>
                   <button onClick={() => cancel(ev.id)} className="bg-red-600 text-white px-3 py-1.5 rounded">
                     Cancelar
                   </button>
-                  <Link
-                    href={`/medico/consultas/${ev.id}`}
-                    className="bg-gray-700 text-white px-3 py-1.5 rounded"
-                    title="Editar consulta"
-                  >
-                    Editar
-                  </Link>
                 </div>
               </div>
             </li>
