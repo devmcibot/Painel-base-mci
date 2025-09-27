@@ -33,8 +33,6 @@ model User {
   email     String     @unique
   name      String
   hashedPwd String
-  cpf       String?    @unique  
-  endereco  String?
   createdAt DateTime   @default(now())
   updatedAt DateTime   @default(now()) @updatedAt
 
