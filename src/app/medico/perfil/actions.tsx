@@ -6,34 +6,40 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-// ========== PERFIL (nome) – mantém sua lógica, só corrige o caminho ==========
+// ========== Atualizar nome + e-mail (User) e CRM (Medico)
 export async function updateProfile(userId: number, formData: FormData) {
-  const name = formData.get("name");
-  if (!name || typeof name !== "string" || name.trim().length < 3) {
-    return { error: "O nome é obrigatório e precisa ter no mínimo 3 caracteres." };
-  }
+  const name = String(formData.get("name") ?? "").trim();
+  const email = String(formData.get("email") ?? "").trim();
+  const crm = String(formData.get("crm") ?? "").trim() || null;
+  const medicoId = Number(formData.get("medicoId"));
+
+  if (!name || name.length < 3) return { error: "Informe um nome válido." };
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
+    return { error: "Informe um e-mail válido." };
+  if (!medicoId || Number.isNaN(medicoId))
+    return { error: "Médico inválido." };
 
   try {
-    await prisma.user.update({
-      where: { id: userId },
-      data: { name: name.trim() },
-    });
+    await prisma.$transaction([
+      prisma.user.update({ where: { id: userId }, data: { name, email } }),
+      prisma.medico.update({ where: { id: medicoId }, data: { crm } }),
+    ]);
     revalidatePath("/medico/perfil");
     return { success: true };
-  } catch (error) {
-    console.error(error);
+  } catch (e: any) {
+    if (e?.code === "P2002") return { error: "E-mail já está em uso." };
+    console.error(e);
     return { error: "Não foi possível atualizar o perfil." };
   }
 }
 
-// ========== NOVA: trocar senha ==========
+// ========== Trocar senha
 export async function changePassword(userId: number, formData: FormData) {
   const oldPassword = String(formData.get("oldPassword") ?? "");
   const newPassword = String(formData.get("newPassword") ?? "");
 
-  if (!newPassword || newPassword.length < 6) {
+  if (!newPassword || newPassword.length < 6)
     return { error: "A nova senha deve ter pelo menos 6 caracteres." };
-  }
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -45,16 +51,13 @@ export async function changePassword(userId: number, formData: FormData) {
   if (!ok) return { error: "Senha atual inválida." };
 
   const hash = await bcrypt.hash(newPassword, 10);
-  await prisma.user.update({
-    where: { id: userId },
-    data: { hashedPwd: hash },
-  });
+  await prisma.user.update({ where: { id: userId }, data: { hashedPwd: hash } });
 
   revalidatePath("/medico/perfil");
   return { success: true };
 }
 
-// ========== HORÁRIOS (igual, só corrige revalidatePath) ==========
+// ========== Horários (igual, só revalidatePath)
 export async function updateHorarios(
   medicoId: number,
   horarios: { weekday: number; startMin: number; endMin: number }[]
@@ -66,7 +69,6 @@ export async function updateHorarios(
         data: horarios.map((h) => ({ ...h, medicoId })),
       }),
     ]);
-
     revalidatePath("/medico/perfil");
     return { success: true };
   } catch (error) {
@@ -75,20 +77,18 @@ export async function updateHorarios(
   }
 }
 
-// ========== AUSÊNCIAS (iguais, só corrige revalidatePath) ==========
+// ========== Ausências (igual, só revalidatePath)
 export async function addAusencia(
   medicoId: number,
   data: { inicio: Date; fim: Date; motivo?: string }
 ) {
-  if (!data.inicio || !data.fim || data.inicio >= data.fim) {
+  if (!data.inicio || !data.fim || data.inicio >= data.fim)
     return { error: "A data de início deve ser anterior à data de fim." };
-  }
 
   try {
     await prisma.medicoAusencia.create({
       data: { medicoId, inicio: data.inicio, fim: data.fim, motivo: data.motivo },
     });
-
     revalidatePath("/medico/perfil");
     return { success: true };
   } catch (error) {
