@@ -379,6 +379,8 @@ export default function Call({
       const timestamp = ts();
       const form = new FormData();
       form.append("audio", blob, `tele_${timestamp}.webm`);
+      // Compat com a rota de anamnese (campo text) e meta com origin="tele"
+      form.append("text", transcript || "");
       form.append(
         "meta",
         JSON.stringify({
@@ -389,9 +391,12 @@ export default function Call({
           consultaId,
           timestamp,
           transcript,
+          origin: "tele",
         })
       );
-      const resp = await fetch("/api/tele/save", { method: "POST", body: form });
+
+      // usa o mesmo endpoint da anamnese
+      const resp = await fetch("/api/medico/anamnese", { method: "POST", body: form });
       if (!resp.ok) {
         const j = await resp.json().catch(() => ({}));
         throw new Error(j.error || `HTTP ${resp.status}`);
