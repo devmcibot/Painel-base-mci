@@ -49,9 +49,7 @@ export default function AnamnesePage() {
   /** ===== Gravação (MediaRecorder) ===== */
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
-  const [recState, setRecState] = useState<"idle" | "recording" | "paused">(
-    "idle"
-  );
+  const [recState, setRecState] = useState<"idle" | "recording">("idle");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -59,11 +57,7 @@ export default function AnamnesePage() {
   /** ===== Transcrição (Web Speech) ===== */
   const recognitionRef = useRef<any | null>(null);
   const [textLive, setTextLive] = useState("");
-  const stableRef = useRef<string>(""); // finais (para não repetir)
-  const recStateRef = useRef(recState);
-  useEffect(() => {
-    recStateRef.current = recState;
-  }, [recState]);
+  const stableRef = useRef<string>("");
 
   /** Carrega dados mínimos — usa GET /api/medico/consultas */
   useEffect(() => {
@@ -184,10 +178,9 @@ export default function AnamnesePage() {
     };
 
     rec.onend = () => {
-      if (recStateRef.current === "recording") {
-        try {
-          rec.start();
-        } catch {}
+      // reinicia só se ainda estivermos gravando
+      if (recState === "recording") {
+        try { rec.start(); } catch {}
       }
     };
 
@@ -196,9 +189,7 @@ export default function AnamnesePage() {
 
   function startRecognition() {
     setupRecognition();
-    try {
-      recognitionRef.current?.start();
-    } catch {}
+    try { recognitionRef.current?.start(); } catch {}
   }
 
   function stopRecognition() {
@@ -233,46 +224,16 @@ export default function AnamnesePage() {
     }
   }
 
-  function onPause() {
-    if (mediaRef.current && recState === "recording") {
-      mediaRef.current.pause();
-      setRecState("paused");
-      stopTimer();
-      stopRecognition();
-    }
-  }
-
-  function onResume() {
-    if (mediaRef.current && recState === "paused") {
-      mediaRef.current.resume();
-      setRecState("recording");
-      startTimer();
-      startRecognition();
-    }
-  }
-
-  async function onSavePrepare() {
-    if (!mediaRef.current) return;
+  // FINALIZAR = parar a gravação + preparar blob + habilitar salvar
+  async function onFinalize() {
+    if (!mediaRef.current || recState !== "recording") return;
     try {
       mediaRef.current.requestData();
       mediaRef.current.stop();
       setRecState("idle");
       stopTimer();
       stopRecognition();
-
-      setTimeout(() => {
-        if (audioBlob) {
-          alert(
-            `Áudio pronto! Tamanho: ${(audioBlob.size / 1024).toFixed(
-              1
-            )} KB\n(Upload vem no próximo passo)`
-          );
-        } else {
-          alert(
-            "Áudio finalizando… (se não aparecer, clique de novo em alguns segundos)"
-          );
-        }
-      }, 300);
+      // o blob é setado no onstop do MediaRecorder
     } catch (e) {
       console.error(e);
       alert("Falha ao finalizar a gravação.");
@@ -282,7 +243,7 @@ export default function AnamnesePage() {
   /** Envia áudio + texto para a API e salva no Storage */
   async function onUpload() {
     if (!audioBlob || !consultaSelecionada) {
-      alert("Finalize o áudio e selecione a consulta.");
+      alert("Finalize a gravação e selecione a consulta.");
       return;
     }
     if (!consultaSelecionada.pastaPath) {
@@ -312,9 +273,6 @@ export default function AnamnesePage() {
       }
 
       alert("Anamnese salva com sucesso!");
-      // Opcional: limpar/ir para a tela de arquivos
-      // setTextLive(""); setAudioBlob(null);
-      // location.href = "/medico/arquivo";
     } catch (e) {
       console.error(e);
       alert("Erro inesperado ao enviar anamnese.");
@@ -335,6 +293,7 @@ export default function AnamnesePage() {
   const podeIniciar = pacienteId && consultaId;
   const pastaPath = consultaSelecionada?.pastaPath ?? "";
   const hhmmss = new Date(elapsedMs).toISOString().substring(11, 19);
+  const estadoVisivel = audioBlob ? "finalizado" : recState;
 
   return (
     <div className="">
@@ -398,7 +357,7 @@ export default function AnamnesePage() {
         )}
       </div>
 
-      {/* Controles de gravação */}
+      {/* Controles de gravação (simplificados) */}
       <div className="border rounded p-3 space-y-3">
         <div className="flex gap-2 items-center flex-wrap">
           <button
@@ -410,40 +369,25 @@ export default function AnamnesePage() {
           </button>
 
           <button
-            onClick={onPause}
+            onClick={onFinalize}
             disabled={recState !== "recording"}
             className="px-3 py-2 rounded border disabled:opacity-50"
+            title="Finaliza a gravação e prepara o arquivo"
           >
-            Pausar
-          </button>
-
-          <button
-            onClick={onResume}
-            disabled={recState !== "paused"}
-            className="px-3 py-2 rounded border disabled:opacity-50"
-          >
-            Continuar
-          </button>
-
-          <button
-            onClick={onSavePrepare}
-            disabled={recState !== "paused" && recState !== "recording"}
-            className="px-3 py-2 rounded bg-black text-white disabled:opacity-50"
-          >
-            Salvar áudio (preparar)
+            Finalizar
           </button>
 
           <button
             onClick={onUpload}
             disabled={!audioBlob || !consultaId}
-            className="px-3 py-2 rounded border disabled:opacity-50"
-            title={!audioBlob ? "Finalize o áudio primeiro" : ""}
+            className="px-3 py-2 rounded bg-black text-white disabled:opacity-50"
+            title={!audioBlob ? "Finalize a gravação primeiro" : ""}
           >
-            Salvar áudio + transcrição (enviar)
+            Salvar em arquivo
           </button>
 
           <span className="ml-2 text-sm">
-            Estado: <b>{recState}</b> • {hhmmss}
+            Estado: <b>{estadoVisivel}</b> • {hhmmss}
           </span>
         </div>
 
@@ -459,8 +403,7 @@ export default function AnamnesePage() {
 
         {audioBlob && (
           <p className="text-xs">
-            Áudio pronto na memória ({(audioBlob.size / 1024).toFixed(1)} KB).
-            Upload vem no próximo passo.
+            Áudio pronto para upload ({(audioBlob.size / 1024).toFixed(1)} KB).
           </p>
         )}
       </div>
