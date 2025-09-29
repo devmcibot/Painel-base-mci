@@ -21,7 +21,6 @@ function ts() {
   )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-// iOS (Safari mobile) não tem SpeechRecognition
 const isIOS =
   typeof navigator !== "undefined" && /iP(hone|ad|od)/i.test(navigator.userAgent);
 
@@ -76,6 +75,17 @@ export default function Call({
 
   const [uiError, setUiError] = useState<string | null>(null);
   const pendingSignalsRef = useRef<SignalMsg[]>([]);
+
+  // Link do paciente
+  const [patientUrl, setPatientUrl] = useState<string>("");
+  useEffect(() => {
+    // client-side: pega o origin correto
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : process.env.NEXT_PUBLIC_SITE_URL || "";
+    setPatientUrl(`${origin}/tele/${consultaId}`);
+  }, [consultaId]);
 
   // ---------- Realtime ----------
   useEffect(() => {
@@ -245,7 +255,7 @@ export default function Call({
     setCallStarted(false);
     callStartedRef.current = false;
     pendingSignalsRef.current = [];
-    // importante: NÃO limpamos chunksRef aqui — assim o botão "Salvar" continua ativo após finalizar
+    // não limpamos chunksRef aqui para permitir salvar depois
   }
 
   // ---------- WebRTC ----------
@@ -284,10 +294,7 @@ export default function Call({
 
       const local = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-        } as MediaTrackConstraints,
+        audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
       });
 
       setLocalStream(local);
@@ -362,11 +369,9 @@ export default function Call({
 
     const dest = ac.createMediaStreamDestination();
 
-    // micro do médico
     const localSrc = ac.createMediaStreamSource(baseLocal);
     localSrc.connect(dest);
 
-    // áudio remoto do paciente (se já tiver)
     if (remoteStream) {
       try {
         const remoteSrc = ac.createMediaStreamSource(remoteStream);
@@ -386,16 +391,15 @@ export default function Call({
 
     recorderRef.current = mr;
     setRecState("recording");
-    startSTT(); // STT só no dispositivo do médico (limitação da Web Speech)
+    startSTT();
   }
 
-  // FINALIZAR = parar gravação + encerrar chamada (mantém chunks para salvar)
   function finalizeTele() {
     try {
       recorderRef.current?.stop();
     } catch {}
     stopSTT();
-    // encerra P2P/câmera/mic, mas NÃO limpa chunksRef
+
     try {
       pcRef.current?.close();
     } catch {}
@@ -423,7 +427,6 @@ export default function Call({
       const timestamp = ts();
       const form = new FormData();
       form.append("audio", blob, `tele_${timestamp}.webm`);
-      // compat com a rota de anamnese
       form.append("text", transcript || "");
       form.append(
         "meta",
@@ -439,7 +442,6 @@ export default function Call({
         })
       );
 
-      // OBS: se sua /api/medico/anamnese exigir pastaPath, ajuste aqui para enviar.
       const resp = await fetch("/api/medico/anamnese", {
         method: "POST",
         body: form,
@@ -454,12 +456,27 @@ export default function Call({
     }
   }
 
-  // ---------- UI ----------
   const headerInfo = useMemo(() => `${nome} • ${cpf ?? ""}`, [nome, cpf]);
 
   return (
     <div className="space-y-4">
       <div className="text-sm text-slate-600">{headerInfo}</div>
+
+      {/* LINK DO PACIENTE */}
+      <div className="flex items-center gap-2">
+        <label className="text-sm font-medium">Link do paciente:</label>
+        <input
+          className="border rounded px-2 py-1 w-[360px] text-sm"
+          readOnly
+          value={patientUrl}
+        />
+        <button
+          className="border rounded px-3 py-1 text-sm"
+          onClick={() => navigator.clipboard.writeText(patientUrl)}
+        >
+          Copiar
+        </button>
+      </div>
 
       {uiError && (
         <div className="rounded border border-red-300 bg-red-50 text-red-700 p-3 text-sm">
@@ -484,7 +501,7 @@ export default function Call({
         />
       </div>
 
-      {/* Controles (3 botões) */}
+      {/* 3 botões */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50"
