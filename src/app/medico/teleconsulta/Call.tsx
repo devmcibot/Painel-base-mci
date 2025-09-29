@@ -21,7 +21,7 @@ function ts() {
   )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
 }
 
-// detecção bem simples de iOS (Safari mobile não tem SpeechRecognition)
+// iOS (Safari mobile) não tem SpeechRecognition
 const isIOS = typeof navigator !== "undefined" && /iP(hone|ad|od)/i.test(navigator.userAgent);
 
 export default function Call({
@@ -44,6 +44,7 @@ export default function Call({
 
   const channel = useMemo(() => sb.channel(`tele-${consultaId}`), [consultaId]);
 
+  // WebRTC
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -55,9 +56,9 @@ export default function Call({
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
 
-  // gravação
-  const [recState, setRecState] = useState<"idle" | "recording" | "paused">("idle");
-  const recStateRef = useRef<"idle" | "recording" | "paused">("idle");
+  // Gravação
+  const [recState, setRecState] = useState<"idle" | "recording">("idle");
+  const recStateRef = useRef<"idle" | "recording">("idle");
   useEffect(() => {
     recStateRef.current = recState;
   }, [recState]);
@@ -65,16 +66,15 @@ export default function Call({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
-  // transcrição
+  // Transcrição
   const [transcript, setTranscript] = useState<string>("");
   const [sttSupported, setSttSupported] = useState<boolean>(false);
   const recognizerRef = useRef<SpeechRecognition | null>(null);
 
   const [uiError, setUiError] = useState<string | null>(null);
-
   const pendingSignalsRef = useRef<SignalMsg[]>([]);
 
-  // ---------------- Realtime ----------------
+  // ---------- Realtime ----------
   useEffect(() => {
     const sub = channel
       .on("broadcast", { event: "signal" }, async ({ payload }) => {
@@ -119,16 +119,14 @@ export default function Call({
     };
   }, [channel]);
 
-  // ---------------- STT ----------------
+  // ---------- STT ----------
   function startSTT() {
-    // iOS não tem STT nativo — informa e sai
     if (isIOS) {
       setSttSupported(false);
       setTranscript((p) => p + "\n[INFO] Transcrição ao vivo indisponível neste dispositivo (iOS).");
       return;
     }
 
-    // encerra instância anterior
     try { recognizerRef.current?.stop(); } catch {}
     recognizerRef.current = null;
 
@@ -156,7 +154,6 @@ export default function Call({
         const r = e.results[i];
         const text = (r[0]?.transcript || "").trim();
         if (!text) continue;
-
         if (r.isFinal) {
           finals.push(text);
           channel.send({
@@ -172,7 +169,6 @@ export default function Call({
     };
 
     rec.onend = () => {
-      // reinicia enquanto ainda estivermos gravando
       if (recStateRef.current === "recording") {
         setTimeout(() => {
           try { rec.start(); } catch {}
@@ -188,11 +184,9 @@ export default function Call({
     recognizerRef.current = null;
   }
 
-  // ---------------- limpeza ----------------
+  // ---------- Limpeza ----------
   useEffect(() => {
-    return () => {
-      stopEverything();
-    };
+    return () => stopEverything();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -218,7 +212,7 @@ export default function Call({
     pendingSignalsRef.current = [];
   }
 
-  // ---------------- WebRTC ----------------
+  // ---------- WebRTC ----------
   async function initPeerConnection(withLocalStream: MediaStream) {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: ["stun:stun.l.google.com:19302"] }],
@@ -243,7 +237,7 @@ export default function Call({
     return pc;
   }
 
-  // ---------------- iniciar tudo (1 clique) ----------------
+  // ---------- Iniciar (chamada + gravação) ----------
   async function startTele() {
     if (!roomReady) {
       setUiError("Sala ainda não pronta. Tente novamente em instantes.");
@@ -252,13 +246,9 @@ export default function Call({
     try {
       setUiError(null);
 
-      // 1) micro/câmera com cancelamento de eco (melhor para mobile)
       const local = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-        } as MediaTrackConstraints,
+        audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
       });
 
       setLocalStream(local);
@@ -267,7 +257,6 @@ export default function Call({
         await localVideoRef.current.play().catch(() => {});
       }
 
-      // 2) P2P
       const pc = await initPeerConnection(local);
       setCallStarted(true);
       callStartedRef.current = true;
@@ -294,8 +283,7 @@ export default function Call({
       }
       pendingSignalsRef.current = [];
 
-      // 3) gravação + STT (passa o stream local por parâmetro p/ evitar race no mobile)
-      await startRecording(local);
+      await startRecording(local); // já começa gravando + STT
     } catch (e: any) {
       setUiError(
         e?.name === "NotAllowedError"
@@ -306,7 +294,7 @@ export default function Call({
     }
   }
 
-  // ---------------- Gravação ----------------
+  // ---------- Gravação ----------
   async function startRecording(localParam?: MediaStream) {
     const baseLocal = localParam || localStream;
     if (!baseLocal) {
@@ -314,18 +302,15 @@ export default function Call({
       return;
     }
 
-    // AudioContext no mobile pode começar 'suspended'
     const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
     const ac: AudioContext = new AC();
     try { await (ac.state === "suspended" ? ac.resume() : Promise.resolve()); } catch {}
 
     const dest = ac.createMediaStreamDestination();
 
-    // sempre conecta o micro LOCAL
     const localSrc = ac.createMediaStreamSource(baseLocal);
     localSrc.connect(dest);
 
-    // se já tiver remoto, também conecta
     if (remoteStream) {
       try {
         const remoteSrc = ac.createMediaStreamSource(remoteStream);
@@ -344,29 +329,19 @@ export default function Call({
 
     recorderRef.current = mr;
     setRecState("recording");
-
-    // STT só durante a gravação (gesto do usuário)
     startSTT();
   }
 
-  function pauseRecording() {
-    if (recState !== "recording") return;
-    recorderRef.current?.pause();
-    setRecState("paused");
-    stopSTT();
-  }
-
-  function resumeRecording() {
-    if (recState !== "paused") return;
-    recorderRef.current?.resume();
-    setRecState("recording");
-    startSTT();
-  }
-
-  function stopRecording() {
+  function stopRecordingOnly() {
     if (!recorderRef.current) return;
     try { recorderRef.current.stop(); } catch {}
     stopSTT();
+  }
+
+  // FINALIZAR = parar gravação + encerrar chamada (libera o "Salvar")
+  function finalizeTele() {
+    stopRecordingOnly();
+    stopEverything(); // encerra P2P/câmera/mic
   }
 
   async function uploadSaved() {
@@ -379,7 +354,7 @@ export default function Call({
       const timestamp = ts();
       const form = new FormData();
       form.append("audio", blob, `tele_${timestamp}.webm`);
-      // Compat com a rota de anamnese (campo text) e meta com origin="tele"
+      // compat com a rota de anamnese
       form.append("text", transcript || "");
       form.append(
         "meta",
@@ -395,7 +370,6 @@ export default function Call({
         })
       );
 
-      // usa o mesmo endpoint da anamnese
       const resp = await fetch("/api/medico/anamnese", { method: "POST", body: form });
       if (!resp.ok) {
         const j = await resp.json().catch(() => ({}));
@@ -407,7 +381,7 @@ export default function Call({
     }
   }
 
-  // ---------------- UI ----------------
+  // ---------- UI ----------
   const headerInfo = useMemo(() => `${nome} • ${cpf ?? ""}`, [nome, cpf]);
 
   return (
@@ -426,7 +400,7 @@ export default function Call({
         <video ref={remoteVideoRef} autoPlay playsInline className="w-full aspect-video rounded-xl border" />
       </div>
 
-      {/* Controles principais */}
+      {/* Controles (3 botões) */}
       <div className="flex flex-wrap items-center gap-2">
         <button
           className="bg-blue-600 text-white rounded px-4 py-2 disabled:opacity-50"
@@ -436,56 +410,24 @@ export default function Call({
           Iniciar teleconsulta (chamada + gravação)
         </button>
 
-        {callStarted && (
-          <button className="border rounded px-4 py-2" onClick={stopEverything}>
-            Encerrar chamada
-          </button>
-        )}
-
-        {!roomReady && <span className="text-sm text-slate-500">Conectando à sala…</span>}
-      </div>
-
-      {/* Controles de gravação */}
-      <div className="flex flex-wrap items-center gap-2">
         <button
-          className="border px-3 py-2 rounded disabled:opacity-50"
-          onClick={pauseRecording}
+          className="border px-4 py-2 rounded disabled:opacity-50"
+          onClick={finalizeTele}
           disabled={recState !== "recording"}
-        >
-          Pausar
-        </button>
-        <button
-          className="border px-3 py-2 rounded disabled:opacity-50"
-          onClick={resumeRecording}
-          disabled={recState !== "paused"}
-        >
-          Continuar
-        </button>
-        <button
-          className="border px-3 py-2 rounded disabled:opacity-50"
-          onClick={stopRecording}
-          disabled={recState === "idle"}
-          title="Interrompe a gravação (áudio fica em memória)"
+          title="Finaliza a gravação e encerra a chamada"
         >
           Finalizar Tele-Consulta
         </button>
 
         <button
-          className="border px-3 py-2 rounded disabled:opacity-50"
-          onClick={() => alert("Áudio preparado em memória.")}
-          disabled={chunksRef.current.length === 0}
-          title="Prepara o blob para envio"
-        >
-          Preparar para salvar
-        </button>
-        <button
-          className="bg-green-600 text-white px-3 py-2 rounded disabled:opacity-50"
+          className="bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50"
           onClick={uploadSaved}
           disabled={chunksRef.current.length === 0}
         >
           Salvar Tele-consulta
         </button>
 
+        {!roomReady && <span className="text-sm text-slate-500">Conectando à sala…</span>}
         <span className="ml-1 text-sm">Estado: {recState}</span>
       </div>
 
