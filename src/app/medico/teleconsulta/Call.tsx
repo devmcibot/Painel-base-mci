@@ -22,7 +22,8 @@ function ts() {
 }
 
 // iOS (Safari mobile) não tem SpeechRecognition
-const isIOS = typeof navigator !== "undefined" && /iP(hone|ad|od)/i.test(navigator.userAgent);
+const isIOS =
+  typeof navigator !== "undefined" && /iP(hone|ad|od)/i.test(navigator.userAgent);
 
 export default function Call({
   medicoId,
@@ -40,7 +41,9 @@ export default function Call({
   const { data } = useSession();
   const role = (data?.user as { role?: Role } | undefined)?.role;
   const mySpeaker: "MEDICO" | "PACIENTE" =
-    role === "ADMIN" || role === "MÉDICO" || role === "MEDICO" ? "MEDICO" : "PACIENTE";
+    role === "ADMIN" || role === "MÉDICO" || role === "MEDICO"
+      ? "MEDICO"
+      : "PACIENTE";
 
   const channel = useMemo(() => sb.channel(`tele-${consultaId}`), [consultaId]);
 
@@ -85,7 +88,9 @@ export default function Call({
             pendingSignalsRef.current.push(msg);
           }
           if (msg.type === "stt" && msg.final) {
-            setTranscript((p) => (msg.text ? p + `\n[${msg.speaker}] ${msg.text}` : p));
+            setTranscript((p) =>
+              msg.text ? p + `\n[${msg.speaker}] ${msg.text}` : p
+            );
           }
           return;
         }
@@ -98,13 +103,19 @@ export default function Call({
             await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
             const ans = await pc.createAnswer();
             await pc.setLocalDescription(ans);
-            channel.send({ type: "broadcast", event: "signal", payload: { type: "answer", sdp: ans } });
+            channel.send({
+              type: "broadcast",
+              event: "signal",
+              payload: { type: "answer", sdp: ans },
+            });
           } else if (msg.type === "answer") {
             await pc.setRemoteDescription(new RTCSessionDescription(msg.sdp));
           } else if (msg.type === "ice" && msg.candidate) {
             await pc.addIceCandidate(new RTCIceCandidate(msg.candidate));
           } else if (msg.type === "stt" && msg.final) {
-            setTranscript((p) => (msg.text ? p + `\n[${msg.speaker}] ${msg.text}` : p));
+            setTranscript((p) =>
+              msg.text ? p + `\n[${msg.speaker}] ${msg.text}` : p
+            );
           }
         } catch (e: any) {
           setUiError(`Erro na sinalização: ${e?.message || String(e)}`);
@@ -123,20 +134,27 @@ export default function Call({
   function startSTT() {
     if (isIOS) {
       setSttSupported(false);
-      setTranscript((p) => p + "\n[INFO] Transcrição ao vivo indisponível neste dispositivo (iOS).");
+      setTranscript(
+        (p) => p + "\n[INFO] Transcrição ao vivo indisponível neste dispositivo (iOS)."
+      );
       return;
     }
 
-    try { recognizerRef.current?.stop(); } catch {}
+    try {
+      recognizerRef.current?.stop();
+    } catch {}
     recognizerRef.current = null;
 
     const SR: any =
       typeof window !== "undefined" &&
-      ((window as any).webkitSpeechRecognition || (window as any).SpeechRecognition);
+      ((window as any).webkitSpeechRecognition ||
+        (window as any).SpeechRecognition);
 
     if (!SR) {
       setSttSupported(false);
-      setTranscript((p) => p + "\n[INFO] Web Speech não disponível neste navegador.");
+      setTranscript(
+        (p) => p + "\n[INFO] Web Speech não disponível neste navegador."
+      );
       return;
     }
 
@@ -159,28 +177,41 @@ export default function Call({
           channel.send({
             type: "broadcast",
             event: "signal",
-            payload: { type: "stt", speaker: mySpeaker, text, final: true } as SignalMsg,
+            payload: {
+              type: "stt",
+              speaker: mySpeaker,
+              text,
+              final: true,
+            } as SignalMsg,
           });
         }
       }
       if (finals.length) {
-        setTranscript((p) => p + finals.map((t) => `\n[${mySpeaker}] ${t}`).join(""));
+        setTranscript(
+          (p) => p + finals.map((t) => `\n[${mySpeaker}] ${t}`).join("")
+        );
       }
     };
 
     rec.onend = () => {
       if (recStateRef.current === "recording") {
         setTimeout(() => {
-          try { rec.start(); } catch {}
+          try {
+            rec.start();
+          } catch {}
         }, 200);
       }
     };
 
-    try { rec.start(); } catch {}
+    try {
+      rec.start();
+    } catch {}
   }
 
   function stopSTT() {
-    try { recognizerRef.current?.stop(); } catch {}
+    try {
+      recognizerRef.current?.stop();
+    } catch {}
     recognizerRef.current = null;
   }
 
@@ -191,10 +222,14 @@ export default function Call({
   }, []);
 
   function stopEverything() {
-    try { recorderRef.current?.stop(); } catch {}
+    try {
+      recorderRef.current?.stop();
+    } catch {}
     recorderRef.current = null;
 
-    try { pcRef.current?.close(); } catch {}
+    try {
+      pcRef.current?.close();
+    } catch {}
     pcRef.current = null;
 
     localStream?.getTracks().forEach((t) => t.stop());
@@ -210,6 +245,7 @@ export default function Call({
     setCallStarted(false);
     callStartedRef.current = false;
     pendingSignalsRef.current = [];
+    // importante: NÃO limpamos chunksRef aqui — assim o botão "Salvar" continua ativo após finalizar
   }
 
   // ---------- WebRTC ----------
@@ -248,7 +284,10 @@ export default function Call({
 
       const local = await navigator.mediaDevices.getUserMedia({
         video: true,
-        audio: { echoCancellation: true, noiseSuppression: true } as MediaTrackConstraints,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+        } as MediaTrackConstraints,
       });
 
       setLocalStream(local);
@@ -261,29 +300,41 @@ export default function Call({
       setCallStarted(true);
       callStartedRef.current = true;
 
-      const queuedOffer = pendingSignalsRef.current.find((m) => m.type === "offer") as
-        | { type: "offer"; sdp: RTCSessionDescriptionInit }
-        | undefined;
+      const queuedOffer = pendingSignalsRef.current.find(
+        (m) => m.type === "offer"
+      ) as { type: "offer"; sdp: RTCSessionDescriptionInit } | undefined;
 
       if (queuedOffer) {
-        await pc.setRemoteDescription(new RTCSessionDescription(queuedOffer.sdp));
+        await pc.setRemoteDescription(
+          new RTCSessionDescription(queuedOffer.sdp)
+        );
         const ans = await pc.createAnswer();
         await pc.setLocalDescription(ans);
-        channel.send({ type: "broadcast", event: "signal", payload: { type: "answer", sdp: ans } });
+        channel.send({
+          type: "broadcast",
+          event: "signal",
+          payload: { type: "answer", sdp: ans },
+        });
       } else {
         const offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
-        channel.send({ type: "broadcast", event: "signal", payload: { type: "offer", sdp: offer } });
+        channel.send({
+          type: "broadcast",
+          event: "signal",
+          payload: { type: "offer", sdp: offer },
+        });
       }
 
       for (const sig of pendingSignalsRef.current) {
         if (sig.type === "ice" && sig.candidate) {
-          try { await pc.addIceCandidate(new RTCIceCandidate(sig.candidate)); } catch {}
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(sig.candidate));
+          } catch {}
         }
       }
       pendingSignalsRef.current = [];
 
-      await startRecording(local); // já começa gravando + STT
+      await startRecording(local); // começa gravando + STT
     } catch (e: any) {
       setUiError(
         e?.name === "NotAllowedError"
@@ -302,15 +353,20 @@ export default function Call({
       return;
     }
 
-    const AC: any = (window as any).AudioContext || (window as any).webkitAudioContext;
+    const AC: any =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
     const ac: AudioContext = new AC();
-    try { await (ac.state === "suspended" ? ac.resume() : Promise.resolve()); } catch {}
+    try {
+      await (ac.state === "suspended" ? ac.resume() : Promise.resolve());
+    } catch {}
 
     const dest = ac.createMediaStreamDestination();
 
+    // micro do médico
     const localSrc = ac.createMediaStreamSource(baseLocal);
     localSrc.connect(dest);
 
+    // áudio remoto do paciente (se já tiver)
     if (remoteStream) {
       try {
         const remoteSrc = ac.createMediaStreamSource(remoteStream);
@@ -323,25 +379,38 @@ export default function Call({
 
     const mr = new MediaRecorder(mixed, { mimeType: "audio/webm" });
     chunksRef.current = [];
-    mr.ondataavailable = (e) => e.data && e.data.size > 0 && chunksRef.current.push(e.data);
+    mr.ondataavailable = (e) =>
+      e.data && e.data.size > 0 && chunksRef.current.push(e.data);
     mr.onstop = () => setRecState("idle");
     mr.start(1000);
 
     recorderRef.current = mr;
     setRecState("recording");
-    startSTT();
+    startSTT(); // STT só no dispositivo do médico (limitação da Web Speech)
   }
 
-  function stopRecordingOnly() {
-    if (!recorderRef.current) return;
-    try { recorderRef.current.stop(); } catch {}
-    stopSTT();
-  }
-
-  // FINALIZAR = parar gravação + encerrar chamada (libera o "Salvar")
+  // FINALIZAR = parar gravação + encerrar chamada (mantém chunks para salvar)
   function finalizeTele() {
-    stopRecordingOnly();
-    stopEverything(); // encerra P2P/câmera/mic
+    try {
+      recorderRef.current?.stop();
+    } catch {}
+    stopSTT();
+    // encerra P2P/câmera/mic, mas NÃO limpa chunksRef
+    try {
+      pcRef.current?.close();
+    } catch {}
+    pcRef.current = null;
+
+    localStream?.getTracks().forEach((t) => t.stop());
+    remoteStream?.getTracks().forEach((t) => t.stop());
+    setLocalStream(null);
+    setRemoteStream(null);
+    if (localVideoRef.current) localVideoRef.current.srcObject = null;
+    if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+
+    setRecState("idle");
+    setCallStarted(false);
+    callStartedRef.current = false;
   }
 
   async function uploadSaved() {
@@ -370,7 +439,11 @@ export default function Call({
         })
       );
 
-      const resp = await fetch("/api/medico/anamnese", { method: "POST", body: form });
+      // OBS: se sua /api/medico/anamnese exigir pastaPath, ajuste aqui para enviar.
+      const resp = await fetch("/api/medico/anamnese", {
+        method: "POST",
+        body: form,
+      });
       if (!resp.ok) {
         const j = await resp.json().catch(() => ({}));
         throw new Error(j.error || `HTTP ${resp.status}`);
@@ -396,8 +469,19 @@ export default function Call({
 
       {/* Vídeos */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <video ref={localVideoRef} autoPlay playsInline muted className="w-full aspect-video rounded-xl border" />
-        <video ref={remoteVideoRef} autoPlay playsInline className="w-full aspect-video rounded-xl border" />
+        <video
+          ref={localVideoRef}
+          autoPlay
+          playsInline
+          muted
+          className="w-full aspect-video rounded-xl border"
+        />
+        <video
+          ref={remoteVideoRef}
+          autoPlay
+          playsInline
+          className="w-full aspect-video rounded-xl border"
+        />
       </div>
 
       {/* Controles (3 botões) */}
@@ -427,7 +511,9 @@ export default function Call({
           Salvar Tele-consulta
         </button>
 
-        {!roomReady && <span className="text-sm text-slate-500">Conectando à sala…</span>}
+        {!roomReady && (
+          <span className="text-sm text-slate-500">Conectando à sala…</span>
+        )}
         <span className="ml-1 text-sm">Estado: {recState}</span>
       </div>
 
@@ -436,12 +522,14 @@ export default function Call({
         <h3 className="font-semibold mb-2">Transcrição (ao vivo)</h3>
         {!sttSupported && !isIOS && (
           <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded p-2 mb-2">
-            Seu navegador pode não suportar Web Speech. Se possível, use Chrome/Edge no computador ou Android.
+            Seu navegador pode não suportar Web Speech. Se possível, use
+            Chrome/Edge no computador ou Android.
           </p>
         )}
         {isIOS && (
           <p className="text-xs text-slate-600 mb-2">
-            iOS/Safari não suporta transcrição ao vivo. A gravação é feita normalmente e pode ser transcrita depois.
+            iOS/Safari não suporta transcrição ao vivo. A gravação é feita
+            normalmente e pode ser transcrita depois.
           </p>
         )}
 
@@ -452,7 +540,8 @@ export default function Call({
           placeholder="A transcrição aparecerá aqui durante a gravação…"
         />
         <p className="text-xs text-slate-500">
-          A transcrição usa Web Speech no navegador e só adiciona frases finais (sem duplicar parciais).
+          A transcrição usa Web Speech no navegador e só adiciona frases finais
+          (sem duplicar parciais).
         </p>
       </div>
     </div>
