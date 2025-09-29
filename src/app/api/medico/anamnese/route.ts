@@ -1,12 +1,14 @@
-// src/app/api/medico/anamnese/route.ts
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { supabaseAdmin } from "@/lib/supabase";
+import { prisma } from "@/lib/prisma";
+import { ensureFolder, ensureConsultaFolder } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
 const BUCKET = process.env.SUPABASE_BUCKET!;
+if (!BUCKET) throw new Error("SUPABASE_BUCKET não definido.");
 
 // helpers p/ nomes de arquivo
 function slugify(s: string) {
@@ -22,58 +24,148 @@ function cpfSuffix(cpf?: string | null) {
   const d = cpf.replace(/\D/g, "");
   return d ? "_" + d.slice(-4) : "";
 }
-function nowStamp() {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(
-    d.getHours()
-  )}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+function pad2(n: number) { return String(n).padStart(2, "0"); }
+function nowStamp(d = new Date()) {
+  return `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}_${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
 }
 function rand4() {
   return String(Math.floor(Math.random() * 10000)).padStart(4, "0");
 }
 
+type MetaTele = {
+  origin?: "tele" | "anamnese";
+  medicoId?: number;
+  pacienteId?: number;
+  consultaId?: number;
+  nome?: string;
+  cpf?: string | null;
+  timestamp?: string;
+  transcript?: string;
+};
+
 export async function POST(req: Request) {
   try {
     // auth
     const session = await getServerSession(authOptions);
-    const medicoId = (session?.user as any)?.medicoId as number | undefined;
-    if (!medicoId) {
+    const medicoIdSess = (session?.user as any)?.medicoId as number | undefined;
+    if (!medicoIdSess) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     // form-data
     const form = await req.formData();
 
-    const pastaPath =
-      (form.get("pastaPath") as string | null) ||
-      (form.get("path") as string | null);
-    const pacienteNome = (form.get("pacienteNome") as string | null) ?? "";
-    const pacienteCpf = (form.get("pacienteCpf") as string | null) ?? "";
-
-    // audio (File)
+    // áudio (obrigatório nos dois fluxos)
     const audio = form.get("audio") as File | null;
-
-    // texto pode vir como string ou como File; suportar os dois
-    let text = "";
-    const txtField = form.get("text");
-    if (typeof txtField === "string") text = txtField;
-    else if (txtField instanceof File) text = await txtField.text();
-
-    if (!pastaPath || !audio || text == null) {
-      return NextResponse.json({ error: "Dados inválidos" }, { status: 400 });
+    if (!audio) {
+      return NextResponse.json({ error: "MISSING_AUDIO" }, { status: 400 });
     }
 
-    // segurança de caminho
-    if (!pastaPath.startsWith(`${medicoId}/`)) {
+    // texto pode vir como string (anamnese) OU dentro de meta.transcript (tele)
+    let text = "";
+    const txtField = form.get("text");
+    if (typeof txtField === "string") {
+      text = txtField;
+    } else if (txtField instanceof File) {
+      text = await txtField.text();
+    }
+
+    // ler meta (teleconsulta)
+    const metaRaw = form.get("meta") as string | null;
+    let origin: "tele" | "anamnese" = "anamnese";
+    let medicoId = medicoIdSess;
+    let pacienteId: number | undefined;
+    let consultaId: number | undefined;
+    let pacienteNome: string | undefined;
+    let pacienteCpf: string | null | undefined;
+    let timestamp = nowStamp();
+
+    if (metaRaw) {
+      try {
+        const meta = JSON.parse(metaRaw) as MetaTele;
+        if (meta.origin === "tele") origin = "tele";
+        if (typeof meta.medicoId === "number") medicoId = meta.medicoId;
+        if (typeof meta.pacienteId === "number") pacienteId = meta.pacienteId;
+        if (typeof meta.consultaId === "number") consultaId = meta.consultaId;
+        if (typeof meta.nome === "string") pacienteNome = meta.nome;
+        if (typeof meta.cpf !== "undefined") pacienteCpf = meta.cpf;
+        if (typeof meta.timestamp === "string" && meta.timestamp) timestamp = meta.timestamp;
+        if (typeof meta.transcript === "string") text = meta.transcript;
+      } catch {
+        // meta inválido → ignora
+      }
+    }
+
+    // fluxo anamnese (pastaPath enviado pela tela)
+    let pastaPath =
+      (form.get("pastaPath") as string | null) ||
+      (form.get("path") as string | null) ||
+      undefined;
+
+    // segurança de caminho (se a tela mandou pastaPath)
+    if (pastaPath && !pastaPath.startsWith(`${medicoIdSess}/`)) {
       return NextResponse.json({ error: "Forbidden path" }, { status: 403 });
     }
 
-    const base =
-      `anamnese_${slugify(pacienteNome)}${cpfSuffix(pacienteCpf)}_${nowStamp()}_${rand4()}`;
+    // Se não vier pastaPath, tentamos resolver pela consulta (tele OU anamnese sem path)
+    if (!pastaPath) {
+      if (!consultaId) {
+        return NextResponse.json({ error: "MISSING_CONSULTA_ID_OR_PASTA" }, { status: 400 });
+      }
 
-    const audioPath = `${pastaPath}/${base}.webm`;
-    const textPath = `${pastaPath}/${base}.txt`;
+      // valida consulta do próprio médico e pega dados do paciente/horário
+      const consulta = await prisma.consulta.findFirst({
+        where: { id: consultaId, medicoId: medicoIdSess },
+        select: {
+          id: true,
+          data: true,
+          pastaPath: true,
+          paciente: { select: { id: true, nome: true, cpf: true } },
+        },
+      });
+      if (!consulta) {
+        return NextResponse.json({ error: "CONSULTA_NOT_FOUND" }, { status: 404 });
+      }
+
+      // preenche faltantes a partir da consulta
+      pacienteId = pacienteId ?? consulta.paciente?.id;
+      pacienteNome = pacienteNome ?? consulta.paciente?.nome;
+      pacienteCpf = typeof pacienteCpf === "undefined" ? (consulta.paciente?.cpf ?? null) : pacienteCpf;
+
+      if (consulta.pastaPath) {
+        pastaPath = consulta.pastaPath;
+        await ensureFolder(pastaPath);
+      } else {
+        if (!pacienteId || !pacienteNome) {
+          return NextResponse.json({ error: "MISSING_PATIENT_DATA" }, { status: 400 });
+        }
+        // cria a pasta usando seu helper (padrão do projeto)
+        pastaPath = await ensureConsultaFolder({
+          medicoId: medicoIdSess,
+          pacienteId,
+          nome: pacienteNome,
+          cpf: pacienteCpf ?? undefined,
+          consultaId: consulta.id,
+          data: consulta.data,
+        });
+        // persiste o path na consulta para reutilização futura
+        await prisma.consulta.update({
+          where: { id: consulta.id },
+          data: { pastaPath },
+        });
+      }
+    } else {
+      // se veio pastaPath, garante a pasta materializada (.keep)
+      await ensureFolder(pastaPath);
+    }
+
+    // monta base do nome (mantém padrão da ANAMNESE, adiciona _TELE só na tele)
+    const base =
+      `anamnese_${slugify(pacienteNome || "paciente")}${cpfSuffix(pacienteCpf)}_${timestamp}_${rand4()}`;
+    const isTele = origin === "tele";
+
+    const audioPath = `${pastaPath}/${base}${isTele ? "_TELE" : ""}.webm`;
+    const textPath  = `${pastaPath}/${base}${isTele ? "_TELE" : ""}.txt`;
 
     // ---- upload do áudio
     const audioBuf = Buffer.from(await audio.arrayBuffer());
@@ -82,8 +174,8 @@ export async function POST(req: Request) {
       upsert: false,
     });
     if (au.error) {
-      // tenta uma segunda vez com outro sufixo se colidir
-      const alt = `${pastaPath}/${base}_${rand4()}.webm`;
+      // em caso de colisão improvável, tenta novo sufixo
+      const alt = `${pastaPath}/${base}_${rand4()}${isTele ? "_TELE" : ""}.webm`;
       const au2 = await supabaseAdmin.storage.from(BUCKET).upload(alt, audioBuf, {
         contentType: audio.type || "audio/webm",
         upsert: false,
@@ -91,24 +183,27 @@ export async function POST(req: Request) {
       if (au2.error) throw au2.error;
     }
 
-    // ---- upload do texto (UTF-8)
-    const textBuf = Buffer.from(text, "utf-8");
+    // ---- upload do texto (UTF-8; mesmo se vazio, grava)
+    const textBuf = Buffer.from(text ?? "", "utf-8");
     const tu = await supabaseAdmin.storage.from(BUCKET).upload(textPath, textBuf, {
       contentType: "text/plain; charset=utf-8",
       upsert: false,
     });
     if (tu.error) {
-      const alt = `${pastaPath}/${base}_${rand4()}.txt`;
-      const tu2 = await supabaseAdmin.storage
-        .from(BUCKET)
-        .upload(alt, textBuf, {
-          contentType: "text/plain; charset=utf-8",
-          upsert: false,
-        });
+      const alt = `${pastaPath}/${base}_${rand4()}${isTele ? "_TELE" : ""}.txt`;
+      const tu2 = await supabaseAdmin.storage.from(BUCKET).upload(alt, textBuf, {
+        contentType: "text/plain; charset=utf-8",
+        upsert: false,
+      });
       if (tu2.error) throw tu2.error;
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({
+      ok: true,
+      origin,
+      pastaPath,
+      files: { audioPath, textPath },
+    });
   } catch (e) {
     console.error("POST /api/medico/anamnese error:", e);
     return NextResponse.json({ error: "Erro no upload" }, { status: 500 });
