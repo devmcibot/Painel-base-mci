@@ -50,6 +50,9 @@ model Medico {
   updatedAt      DateTime         @default(now()) @updatedAt
   MedicoHorario  MedicoHorario[]
   MedicoAusencia MedicoAusencia[]
+
+  // NOVO: back-relation dos laudos
+  laudos         LaudoJob[]       @relation("MedicoLaudos")
 }
 
 model Paciente {
@@ -67,6 +70,9 @@ model Paciente {
   medico       Medico       @relation(fields: [medicoId], references: [id])
   consultas    Consulta[]
   AgendaEvento AgendaEvento[]
+
+  // NOVO: back-relation dos laudos
+  laudos       LaudoJob[]   @relation("PacienteLaudos")
 
   @@index([medicoId])
 }
@@ -93,6 +99,9 @@ model Consulta {
   Transcript   Transcript[]
   AgendaEvento AgendaEvento[]
   ExternalLink ExternalLink[]
+
+  // NOVO: back-relation dos laudos
+  laudos       LaudoJob[]   @relation("ConsultaLaudos")
 
   @@index([medicoId])
   @@index([pacienteId])
@@ -210,10 +219,10 @@ model LaudoJob {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @default(now()) @updatedAt
 
-  // ---- campos de relação (nomes em camelCase) ----
-  medico     Medico      @relation(fields: [medicoId], references: [id])
-  paciente   Paciente    @relation(fields: [pacienteId], references: [id])
-  consulta   Consulta    @relation(fields: [consultaId], references: [id])
+  // Relações nomeadas
+  medico     Medico      @relation("MedicoLaudos",   fields: [medicoId],   references: [id])
+  paciente   Paciente    @relation("PacienteLaudos", fields: [pacienteId], references: [id])
+  consulta   Consulta    @relation("ConsultaLaudos", fields: [consultaId], references: [id])
 
   @@index([medicoId])
   @@index([pacienteId])
@@ -221,4 +230,3 @@ model LaudoJob {
   @@index([status])
   @@index([createdAt])
 }
-
