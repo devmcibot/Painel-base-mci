@@ -210,9 +210,10 @@ model LaudoJob {
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @default(now()) @updatedAt
 
-  Medico   Medico   @relation(fields: [medicoId], references: [id])
-  Paciente Paciente @relation(fields: [pacienteId], references: [id])
-  Consulta Consulta @relation(fields: [consultaId], references: [id])
+  // ---- campos de relação (nomes em camelCase) ----
+  medico     Medico      @relation(fields: [medicoId], references: [id])
+  paciente   Paciente    @relation(fields: [pacienteId], references: [id])
+  consulta   Consulta    @relation(fields: [consultaId], references: [id])
 
   @@index([medicoId])
   @@index([pacienteId])
@@ -220,3 +221,4 @@ model LaudoJob {
   @@index([status])
   @@index([createdAt])
 }
+
