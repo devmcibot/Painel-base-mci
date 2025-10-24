@@ -15,10 +15,14 @@ type PatientRow = {
 export default async function PacientesPage() {
   const session = await getServerSession(authOptions);
   const medicoId = (session?.user as any)?.medicoId ?? null;
+
   if (!medicoId) {
     return (
-      <main className="p-6">
-        <p>Somente médicos podem acessar.</p>
+      <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">
+          Pacientes
+        </h1>
+        <p className="text-gray-500 mt-1">Somente médicos podem acessar.</p>
       </main>
     );
   }
@@ -39,28 +43,27 @@ export default async function PacientesPage() {
   const PatientsTableClient = (await import("./PatientsTableClient")).default;
 
   return (
-    <div className="">
-      {/* Início */}
-      <div className="mb-2">
-        <Link
-          href="/medico"
-          className="inline-flex items-center gap-2 text-sm text-blue-700 underline"
-        >
-          &larr; Início
-        </Link>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Pacientes</h1>
+    <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
+      {/* Cabeçalho */}
+      <header className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">
+            Pacientes
+          </h1>
+          <p className="text-gray-500 mt-1">Gerencie sua base de pacientes.</p>
+        </div>
         <Link
           href="/medico/pacientes/novo"
-          className="px-3 py-2 rounded bg-blue-primary text-white"
+          className="px-4 py-2 rounded-lg bg-[#1E63F3] text-white hover:bg-[#0F4CCF]"
         >
           Adicionar paciente
         </Link>
-      </div>
+      </header>
 
-      <PatientsTableClient items={pacientes as PatientRow[]} />
-    </div>
+      {/* Tabela */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden p-4 md:p-6">
+        <PatientsTableClient items={pacientes as PatientRow[]} />
+      </section>
+    </main>
   );
 }
