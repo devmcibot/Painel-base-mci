@@ -15,14 +15,17 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
 
   if (!medicoId) {
     return (
-      <main className="p-6">
-        <div className="mb-3">
-          <a href="/medico" className="underline">
-            &larr; Início
-          </a>
-        </div>
-        <h1 className="text-xl font-semibold mb-2">Arquivos</h1>
-        <p>Você precisa estar logado como médico.</p>
+      <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
+        <header className="mb-8">
+          <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">Arquivos</h1>
+          <p className="text-gray-500 mt-1">Você precisa estar logado como médico.</p>
+        </header>
+
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <Link href="/login" className="text-[#1E63F3] hover:underline">
+            Ir para login
+          </Link>
+        </section>
       </main>
     );
   }
@@ -87,20 +90,19 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
     selected && selectedFolder ? `${base}/${selectedFolder}` : null;
 
   return (
-    <main className="p-6">
-      <div className="mb-3">
-        <a href="/medico" className="underline">
-          &larr; Início
-        </a>
-      </div>
+    <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
+      <header className="mb-8">
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">Arquivos</h1>
+        <p className="text-gray-500 mt-1">Navegue por pacientes, consultas e documentos.</p>
+      </header>
 
-      <h1 className="text-xl font-semibold mb-4">Arquivos</h1>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Pacientes */}
-        <div>
-          <div className="font-medium mb-2">Pacientes</div>
-          <div className="border rounded divide-y">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-[#1E63F3]">Pacientes</h2>
+          </div>
+          <div className="divide-y">
             {pacientes.map((p) => {
               const active = p.id === selected?.id;
               return (
@@ -111,7 +113,7 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
                     active ? "bg-gray-100" : ""
                   }`}
                 >
-                  <div className="font-medium">{p.nome}</div>
+                  <div className="font-medium text-gray-800">{p.nome}</div>
                   <div className="text-xs text-gray-500">{p.cpf ?? "-"}</div>
                 </Link>
               );
@@ -125,9 +127,11 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
         </div>
 
         {/* Consultas */}
-        <div>
-          <div className="font-medium mb-2">Consultas</div>
-          <div className="border rounded divide-y min-h-[52px]">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-[#1E63F3]">Consultas</h2>
+          </div>
+          <div className="divide-y min-h-[52px]">
             {!selected && (
               <div className="px-3 py-2 text-sm text-gray-600">
                 Selecione um paciente.
@@ -161,27 +165,31 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
           </div>
         </div>
 
-        {/* Arquivos (com toolbar + ações) */}
-        <div>
-          <div className="font-medium mb-2">Arquivos</div>
+        {/* Arquivos */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <div className="px-4 py-3 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-[#1E63F3]">Arquivos</h2>
+          </div>
 
-          {!selected && (
-            <div className="border rounded px-3 py-2 text-sm text-gray-600">
-              Selecione um paciente.
-            </div>
-          )}
+          <div className="p-3">
+            {!selected && (
+              <div className="rounded border border-gray-200 px-3 py-2 text-sm text-gray-600 bg-gray-50">
+                Selecione um paciente.
+              </div>
+            )}
 
-          {selected && !selectedFolder && (
-            <div className="border rounded px-3 py-2 text-sm text-gray-600">
-              Selecione uma consulta.
-            </div>
-          )}
+            {selected && !selectedFolder && (
+              <div className="rounded border border-gray-200 px-3 py-2 text-sm text-gray-600 bg-gray-50">
+                Selecione uma consulta.
+              </div>
+            )}
 
-          {selected && selectedFolder && fullFolderPath && (
-            <Explorer folderPath={fullFolderPath} files={arquivos} />
-          )}
+            {selected && selectedFolder && fullFolderPath && (
+              <Explorer folderPath={fullFolderPath} files={arquivos} />
+            )}
+          </div>
         </div>
-      </div>
+      </section>
     </main>
   );
 }
