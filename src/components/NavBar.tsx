@@ -65,37 +65,53 @@ export default async function NavBar() {
               </Link>
             </li>
 
-            <li>
+            <li className="group">
               <Link
                 href="/medico/consultas/novo"
                 className="flex items-center gap-2"
               >
                 <PlusIcon />
-                <span>Nova consulta</span>
+                <div className="relative">
+                  {" "}
+                  <span>Nova consulta</span>
+                  <div className="group-hover:w-20 h-0 w-0 group-hover:h-[1px] absolute left-0 botom-0 bg-blue-primary transtion duration-300"></div>{" "}
+                </div>
               </Link>
             </li>
 
-            <li>
+            <li className="group">
               <Link href="/medico/arquivo" className="flex items-center gap-2">
                 <ArchiveIcon />
-                <span>Arquivos</span>
+                <div className="relative">
+                  {" "}
+                  <span>Arquivos</span>
+                  <div className="group-hover:w-20 h-0 w-0 group-hover:h-[1px] absolute left-0 botom-0 bg-blue-primary transtion duration-300"></div>{" "}
+                </div>
               </Link>
             </li>
 
-            <li>
+            <li className="group">
               <Link href="/medico/anamnese" className="flex items-center gap-2">
                 <AnamnesisIcon />
-                <span>Anamnese</span>
+                <div className="relative">
+                  {" "}
+                  <span>Anamnese</span>
+                  <div className="group-hover:w-20 h-0 w-0 group-hover:h-[1px] absolute left-0 botom-0 bg-blue-primary transtion duration-300"></div>{" "}
+                </div>
               </Link>
             </li>
 
-            <li>
+            <li className="group">
               <Link
                 href="/medico/teleconsulta"
                 className="flex items-center gap-3"
               >
                 <CameraIcon />
-                <span>Tele-Consulta</span>
+                <div className="relative">
+                  {" "}
+                  <span>Tele consulta</span>
+                  <div className="group-hover:w-20 h-0 w-0 group-hover:h-[1px] absolute left-0 botom-0 bg-blue-primary transtion duration-300"></div>{" "}
+                </div>
               </Link>
             </li>
           </ul>
