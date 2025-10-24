@@ -2,9 +2,10 @@ import { getServerSession } from "next-auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Medico, Consulta, Paciente } from "@prisma/client";
+import type { ReactNode } from "react";
 
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import { prisma } from "@/lib/prisma"; // Certifique-se que o caminho está correto
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -13,38 +14,45 @@ type ConsultaComPaciente = Consulta & {
   paciente: Pick<Paciente, "nome">;
 };
 
-// Componente para os cards de estatísticas
-const StatCard = ({
+// Card de estatística com badge de ícone
+function StatCard({
   title,
   value,
+  icon,
 }: {
   title: string;
   value: number | string;
-}) => (
-  <div className="bg-white border rounded-lg p-6 shadow-sm">
-    <p className="text-sm text-gray-500">{title}</p>
-    <p className="text-3xl font-bold mt-1">{value}</p>
-  </div>
-);
+  icon: ReactNode;
+}) {
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-5">
+      <div className="flex items-center gap-2 mb-2">
+        <span className="inline-flex items-center justify-center rounded-lg p-2 bg-[#EAF2FF] text-[#1E63F3]">
+          {icon}
+        </span>
+        <p className="font-semibold text-gray-700">{title}</p>
+      </div>
+      <p className="text-3xl font-bold text-[#1E63F3] leading-none">{value}</p>
+    </div>
+  );
+}
 
 export default async function MedicoHome() {
   const session = await getServerSession(authOptions);
 
-  // A verificação original foi mantida e ajustada para checar o ID do usuário
   if (!session?.user) {
     redirect("/login?callbackUrl=/medico");
   }
 
   const medico: Medico | null = await prisma.medico.findUnique({
-    where: { id: Number(session.user.medicoId) },
+    where: { id: Number((session.user as any)?.medicoId) },
   });
 
   if (!medico) {
-    // Caso o usuário não tenha um perfil de médico vinculado
     redirect("/login?error=unauthorized");
   }
 
-  // 2. Definir períodos de data e buscar dados em paralelo
+  // Datas de referência
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
 
@@ -54,9 +62,9 @@ export default async function MedicoHome() {
   const weekEnd = new Date();
   weekEnd.setDate(weekEnd.getDate() + 7);
 
+  // Consultas / Pacientes / Próximas consultas em paralelo
   const [consultasHojeCount, totalPacientesCount, proximasConsultas] =
     await Promise.all([
-      // Contar consultas de hoje
       prisma.consulta.count({
         where: {
           medicoId: medico.id,
@@ -64,11 +72,9 @@ export default async function MedicoHome() {
           data: { gte: todayStart, lte: todayEnd },
         },
       }),
-      // Contar total de pacientes
       prisma.paciente.count({
         where: { medicoId: medico.id },
       }),
-      // Buscar as 5 próximas consultas nos próximos 7 dias
       prisma.consulta.findMany({
         where: {
           medicoId: medico.id,
@@ -78,51 +84,49 @@ export default async function MedicoHome() {
         take: 5,
         orderBy: { data: "asc" },
         include: {
-          paciente: {
-            select: { nome: true },
-          },
+          paciente: { select: { nome: true } },
         },
       }) as Promise<ConsultaComPaciente[]>,
     ]);
 
-  // --- Fim da Lógica do Dashboard ---
-
   return (
-    <div className="max-w-5xl mx-auto p-6 space-y-8">
-      {/* Cabeçalho de Boas-vindas */}
-      <div>
-        <h1 className="text-3xl font-bold text-gray-800">
+    <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
+      {/* Cabeçalho */}
+      <header className="mb-8">
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">
           Olá, Dr(a). {session.user.name}!
         </h1>
         <p className="text-gray-500 mt-1">
           Aqui está um resumo da sua atividade e agenda.
         </p>
-      </div>
+      </header>
 
-      {/* Grid de Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard title="Consultas Hoje" value={consultasHojeCount} />
-        <StatCard title="Pacientes Totais" value={totalPacientesCount} />
+      {/* Grid de estatísticas */}
+      <section className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
+        <StatCard title="Consultas Hoje" value={consultasHojeCount} icon={"💉"} />
+        <StatCard title="Pacientes Totais" value={totalPacientesCount} icon={"👤"} />
         <StatCard
           title="Consultas Próximas (7d)"
           value={proximasConsultas.length}
+          icon={"📅"}
         />
-      </div>
+      </section>
 
-      {/* Lista de Próximas Consultas */}
-      <div className="bg-white border rounded-lg shadow-sm">
-        <div className="p-4 border-b">
-          <h2 className="text-xl font-semibold text-gray-700">
+      {/* Próximas Consultas */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-3 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-[#1E63F3]">
             Próximas Consultas
           </h2>
         </div>
-        <div className="p-4">
+
+        <div className="p-4 md:p-6">
           {proximasConsultas.length > 0 ? (
-            <ul className="space-y-4">
+            <ul className="space-y-3">
               {proximasConsultas.map((consulta) => (
                 <li
                   key={consulta.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-md hover:bg-gray-100"
+                  className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition"
                 >
                   <div>
                     <p className="font-semibold text-gray-800">
@@ -141,22 +145,23 @@ export default async function MedicoHome() {
                       })}
                     </p>
                   </div>
+
                   <Link
                     href={`/medico/consultas/${consulta.id}`}
-                    className="text-sm text-blue-600 hover:underline"
+                    className="text-sm font-medium text-[#1E63F3] hover:underline"
                   >
-                    Ver Detalhes
+                    Ver detalhes
                   </Link>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-gray-500 text-center py-4">
+            <p className="text-gray-500 text-center py-6">
               Nenhuma consulta agendada para os próximos 7 dias.
             </p>
           )}
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
