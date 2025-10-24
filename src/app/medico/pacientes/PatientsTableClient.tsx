@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 
 type PatientRow = {
   id: number;
@@ -15,26 +16,17 @@ type Props = { items: PatientRow[] };
 
 export default function PatientsTableClient({ items }: Props) {
   const [selected, setSelected] = useState<number[]>([]);
-  // 1. Adicionar estado para o termo da busca
   const [searchQuery, setSearchQuery] = useState("");
 
-  // 2. Filtrar os itens com base na busca. useMemo otimiza a performance.
+  // Filtra por nome (case-insensitive)
   const filteredItems = useMemo(() => {
-    // Se a busca estiver vazia, retorna todos os itens originais
-    if (!searchQuery) {
-      return items;
-    }
-    // Retorna apenas os itens cujo nome (em minúsculas) inclui o termo da busca
-    return items.filter((patient) =>
-      patient.nome.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!searchQuery) return items;
+    return items.filter((p) =>
+      p.nome.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [items, searchQuery]); // A lista é recalculada somente se `items` ou `searchQuery` mudarem
+  }, [items, searchQuery]);
 
-  // A lógica de "selecionar todos" agora deve se basear nos itens filtrados
-  const allFilteredIds = useMemo(
-    () => filteredItems.map((p) => p.id),
-    [filteredItems]
-  );
+  const allFilteredIds = useMemo(() => filteredItems.map((p) => p.id), [filteredItems]);
   const allSelected =
     filteredItems.length > 0 && selected.length === filteredItems.length;
 
@@ -45,7 +37,6 @@ export default function PatientsTableClient({ items }: Props) {
   }
 
   function toggleAll() {
-    // A função toggleAll agora usa os IDs dos itens filtrados
     setSelected((prev) =>
       prev.length === filteredItems.length ? [] : allFilteredIds
     );
@@ -71,19 +62,19 @@ export default function PatientsTableClient({ items }: Props) {
   }
 
   return (
-    <div className="border rounded overflow-hidden">
-      <div className="flex items-center justify-between gap-4 px-3 py-2 bg-gray-50 border-b">
-        {/* 3. Adicionar o campo de input para a busca */}
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 px-4 py-3 border-b border-gray-200">
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Buscar por nome..."
-          className="border rounded px-3 py-1.5 text-sm w-full max-w-xs"
+          placeholder="Buscar por nome…"
+          className="w-full sm:max-w-xs rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#1E63F3] focus:border-[#1E63F3] bg-white"
         />
 
-        <div className="flex items-center gap-4">
-          <div className="text-sm">
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-gray-600">
             {selected.length === 0
               ? "Nenhuma seleção"
               : `${selected.length} selecionado(s)`}
@@ -91,81 +82,101 @@ export default function PatientsTableClient({ items }: Props) {
           <button
             onClick={bulkDelete}
             disabled={selected.length === 0}
-            className="px-3 py-1.5 rounded bg-red-500 text-white disabled:opacity-50"
+            className="px-3 py-2 rounded-lg text-sm bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Excluir selecionados
           </button>
         </div>
       </div>
 
-      <table className="w-full text-sm">
-        <thead className="bg-gray-50">
-          <tr>
-            <th className="p-3 w-10">
-              <input
-                type="checkbox"
-                aria-label="Selecionar todos"
-                checked={allSelected}
-                onChange={toggleAll}
-              />
-            </th>
-            <th className="p-3 text-left">ID</th>
-            <th className="p-3 text-left">Nome</th>
-            <th className="p-3 text-left">CPF</th>
-            <th className="p-3 text-left">Telefone</th>
-            <th className="p-3 text-left">E-mail</th>
-            <th className="p-3 text-left">Nascimento</th>
-            <th className="p-3 text-left">Ações</th>
-          </tr>
-        </thead>
-        <tbody>
-          {/* 4. Mapear sobre a lista filtrada (`filteredItems`) em vez de `items` */}
-          {filteredItems.map((p) => (
-            <tr key={p.id} className="border-t">
-              <td className="p-3">
+      {/* Tabela */}
+      <div className="w-full overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr className="text-gray-600">
+              <th className="p-3 w-10">
                 <input
                   type="checkbox"
-                  checked={selected.includes(p.id)}
-                  onChange={() => toggleOne(p.id)}
+                  aria-label="Selecionar todos"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  className="accent-[#1E63F3] cursor-pointer"
                 />
-              </td>
-              <td className="p-3">{p.id}</td>
-              <td className="p-3">{p.nome}</td>
-              <td className="p-3">{p.cpf ?? "-"}</td>
-              <td className="p-3">{p.telefone ?? "-"}</td>
-              <td className="p-3">{p.email ?? "-"}</td>
-              <td className="p-3">
-                {p.nascimento
-                  ? new Date(p.nascimento).toLocaleDateString()
-                  : "-"}
-              </td>
-              <td className="p-3">
-                <a
-                  className="text-blue-700 underline"
-                  href={`/medico/pacientes/${p.id}`}
-                >
-                  editar
-                </a>
-              </td>
+              </th>
+              <th className="p-3 text-left font-medium">ID</th>
+              <th className="p-3 text-left font-medium">Nome</th>
+              <th className="p-3 text-left font-medium">CPF</th>
+              <th className="p-3 text-left font-medium">Telefone</th>
+              <th className="p-3 text-left font-medium">E-mail</th>
+              <th className="p-3 text-left font-medium">Nascimento</th>
+              <th className="p-3 text-left font-medium">Ações</th>
             </tr>
-          ))}
-          {/* 5. Mensagem para quando a busca não encontra resultados */}
-          {items.length > 0 && filteredItems.length === 0 && (
-            <tr>
-              <td className="p-3 text-center" colSpan={8}>
-                Nenhum paciente encontrado com este nome.
-              </td>
-            </tr>
-          )}
-          {items.length === 0 && (
-            <tr>
-              <td className="p-3 text-center" colSpan={8}>
-                Nenhum paciente ainda.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+
+          <tbody className="divide-y divide-gray-100">
+            {filteredItems.map((p) => (
+              <tr key={p.id} className="hover:bg-gray-50">
+                <td className="p-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.includes(p.id)}
+                    onChange={() => toggleOne(p.id)}
+                    className="accent-[#1E63F3] cursor-pointer"
+                    aria-label={`Selecionar ${p.nome}`}
+                  />
+                </td>
+                <td className="p-3 text-gray-700">{p.id}</td>
+                <td className="p-3 font-medium text-gray-800">{p.nome}</td>
+                <td className="p-3 text-gray-700">{p.cpf ?? "-"}</td>
+                <td className="p-3 text-gray-700">{p.telefone ?? "-"}</td>
+                <td className="p-3 text-gray-700">{p.email ?? "-"}</td>
+                <td className="p-3 text-gray-700">
+                  {p.nascimento
+                    ? new Date(p.nascimento).toLocaleDateString("pt-BR")
+                    : "-"}
+                </td>
+                <td className="p-3">
+                  <div className="flex items-center gap-2">
+                    <Link
+                      href={`/medico/pacientes/${p.id}`}
+                      className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-[#1E63F3] hover:bg-gray-50"
+                      title="Editar paciente"
+                    >
+                      Editar
+                    </Link>
+                    {/* exemplos futuros:
+                    <button
+                      type="button"
+                      className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      disabled
+                      title="Gerar relatório (em breve)"
+                    >
+                      Relatório
+                    </button>
+                    */}
+                  </div>
+                </td>
+              </tr>
+            ))}
+
+            {/* Estados vazios / sem resultado */}
+            {items.length > 0 && filteredItems.length === 0 && (
+              <tr>
+                <td className="p-6 text-center text-gray-500" colSpan={8}>
+                  Nenhum paciente encontrado com este nome.
+                </td>
+              </tr>
+            )}
+            {items.length === 0 && (
+              <tr>
+                <td className="p-6 text-center text-gray-500" colSpan={8}>
+                  Nenhum paciente ainda.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
