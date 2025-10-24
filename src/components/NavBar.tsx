@@ -2,6 +2,8 @@ import Link from "next/link";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import Profile from "@/components/Profile";
+import Image from "next/image";
+import logomci from "../assets/logo-mci.png";
 import {
   AnamnesisIcon,
   ArchiveIcon,
@@ -28,34 +30,38 @@ export default async function NavBar() {
     <nav className="w-56 py-16 px-8 fixed left-0 top-0 h-dvh border-r flex flex-col justify-between">
       <div>
         <Link href="/" className="font-bold text-4xl mb-16 flex gap-2">
-          <h1 className="tracking-wide">
-            <span className="text-blue-primary">M</span>
-            <span className="text-blue-primary">C</span>
-            <span className="text-blue-secondary">I</span>
-          </h1>
+          <Image src={logomci} alt="logo" width={120} />
         </Link>
 
         {!medicoId ? (
           <p className="">Este usuário não está vinculado a um médico.</p>
         ) : (
           <ul className="flex gap-6 flex-col">
-            <li className="">
+            <li className="group">
               <Link
                 href="/medico/pacientes"
                 className="flex items-center gap-2"
               >
                 <PatientIcon />
-                <span>Pacientes</span>
+                <div className="relative">
+                  {" "}
+                  <span>Pacientes</span>
+                  <div className="group-hover:w-20 h-0 w-0 group-hover:h-[1px] absolute left-0 botom-0 bg-blue-primary transtion duration-300"></div>{" "}
+                </div>
               </Link>
             </li>
 
-            <li>
+            <li className="group">
               <Link
                 href="/medico/consultas"
                 className="flex items-center gap-2"
               >
                 <MedicalAppointmentIcon />
-                <span>Consultas</span>
+                <div className="relative">
+                  {" "}
+                  <span>Consultas</span>
+                  <div className="group-hover:w-20 h-0 w-0 group-hover:h-[1px] absolute left-0 botom-0 bg-blue-primary transtion duration-300"></div>{" "}
+                </div>
               </Link>
             </li>
 
