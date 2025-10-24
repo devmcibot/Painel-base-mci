@@ -1,4 +1,3 @@
-// src/app/medico/anamnese/page.tsx
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -79,7 +78,7 @@ export default function AnamnesePage() {
 
         const cons: ConsultaItem[] = list.map((c) => ({
           id: c.id,
-          data: c.data, // ISO
+          data: c.data,
           pastaPath: c.pastaPath ?? null,
           pacienteId: c.paciente.id,
           pacienteNome: c.paciente.nome,
@@ -178,9 +177,10 @@ export default function AnamnesePage() {
     };
 
     rec.onend = () => {
-      // reinicia só se ainda estivermos gravando
       if (recState === "recording") {
-        try { rec.start(); } catch {}
+        try {
+          rec.start();
+        } catch {}
       }
     };
 
@@ -189,7 +189,9 @@ export default function AnamnesePage() {
 
   function startRecognition() {
     setupRecognition();
-    try { recognitionRef.current?.start(); } catch {}
+    try {
+      recognitionRef.current?.start();
+    } catch {}
   }
 
   function stopRecognition() {
@@ -224,7 +226,6 @@ export default function AnamnesePage() {
     }
   }
 
-  // FINALIZAR = parar a gravação + preparar blob + habilitar salvar
   async function onFinalize() {
     if (!mediaRef.current || recState !== "recording") return;
     try {
@@ -233,7 +234,6 @@ export default function AnamnesePage() {
       setRecState("idle");
       stopTimer();
       stopRecognition();
-      // o blob é setado no onstop do MediaRecorder
     } catch (e) {
       console.error(e);
       alert("Falha ao finalizar a gravação.");
@@ -242,21 +242,21 @@ export default function AnamnesePage() {
 
   /** Envia áudio + texto para a API e salva no Storage */
   async function onUpload() {
-    if (!audioBlob || !consultaSelecionada) {
+    const sel = consultaSelecionada;
+    if (!audioBlob || !sel) {
       alert("Finalize a gravação e selecione a consulta.");
       return;
     }
-    if (!consultaSelecionada.pastaPath) {
+    if (!sel.pastaPath) {
       alert("Consulta sem pasta (pastaPath).");
       return;
     }
 
     try {
       const fd = new FormData();
-      // a rota espera estes campos:
-      fd.append("pastaPath", consultaSelecionada.pastaPath);
-      fd.append("pacienteNome", consultaSelecionada.pacienteNome || "");
-      fd.append("pacienteCpf", consultaSelecionada.pacienteCpf || "");
+      fd.append("pastaPath", sel.pastaPath);
+      fd.append("pacienteNome", sel.pacienteNome || "");
+      fd.append("pacienteCpf", sel.pacienteCpf || "");
       fd.append("audio", audioBlob, "audio.webm");
       fd.append("text", textLive || "");
 
@@ -296,117 +296,137 @@ export default function AnamnesePage() {
   const estadoVisivel = audioBlob ? "finalizado" : recState;
 
   return (
-    <div className="">
-      <div className="mb-2">
-        <a href="/medico" className="underline">
-          &larr; Início
-        </a>
-      </div>
+    <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
+      <header className="mb-8">
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">
+          Anamnese
+        </h1>
+        <p className="text-gray-500 mt-1">
+          Grave o áudio da consulta e gere a transcrição automaticamente.
+        </p>
+      </header>
 
-      <h1 className="text-xl font-semibold">Anamnese</h1>
+      {/* Seletores */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8">
+        <div className="px-6 py-3 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-[#1E63F3]">Seleção</h2>
+        </div>
+        <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Paciente */}
+          <div>
+            <label className="text-sm text-gray-600 mb-1 block">Paciente</label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none"
+              value={pacienteId}
+              onChange={(e) =>
+                setPacienteId(e.target.value ? Number(e.target.value) : "")
+              }
+              disabled={loading || !!errMsg}
+            >
+              <option value="">— selecione um paciente —</option>
+              {pacientes.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.nome} {p.cpf ? `(${p.cpf})` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
 
-      {loading && <p>Carregando…</p>}
-      {errMsg && <p className="text-red-600">Erro: {errMsg}</p>}
+          {/* Consulta */}
+          <div>
+            <label className="text-sm text-gray-600 mb-1 block">Consulta</label>
+            <select
+              className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none"
+              value={consultaId}
+              onChange={(e) =>
+                setConsultaId(e.target.value ? Number(e.target.value) : "")
+              }
+              disabled={!pacienteId || loading || !!errMsg}
+            >
+              <option value="">— selecione um paciente primeiro —</option>
+              {consultasDoPaciente.map((c) => (
+                <option key={c.id} value={c.id}>
+                  #{c.id} • {fmtBr(c.data)}
+                </option>
+              ))}
+            </select>
+            {pastaPath ? (
+              <p className="text-xs text-gray-500 mt-1">
+                Pasta da consulta: {pastaPath}
+              </p>
+            ) : (
+              consultaId && (
+                <p className="text-xs text-amber-700 mt-1">
+                  (Esta consulta ainda não tem pasta. Crie a consulta pela
+                  Agenda.)
+                </p>
+              )
+            )}
+          </div>
+        </div>
+      </section>
 
-      {/* Paciente */}
-      <div className="space-y-2">
-        <label className="text-sm">Paciente</label>
-        <select
-          className="w-full border rounded px-3 py-2"
-          value={pacienteId}
-          onChange={(e) =>
-            setPacienteId(e.target.value ? Number(e.target.value) : "")
-          }
-          disabled={loading || !!errMsg}
-        >
-          <option value="">— selecione um paciente —</option>
-          {pacientes.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.nome} {p.cpf ? `(${p.cpf})` : ""}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Controles de gravação */}
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-3 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-[#1E63F3]">
+            Gravação & Transcrição
+          </h2>
+        </div>
 
-      {/* Consulta */}
-      <div className="space-y-2">
-        <label className="text-sm">Consulta</label>
-        <select
-          className="w-full border rounded px-3 py-2"
-          value={consultaId}
-          onChange={(e) =>
-            setConsultaId(e.target.value ? Number(e.target.value) : "")
-          }
-          disabled={!pacienteId || loading || !!errMsg}
-        >
-          <option value="">— selecione um paciente primeiro —</option>
-          {consultasDoPaciente.map((c) => (
-            <option key={c.id} value={c.id}>
-              #{c.id} • {fmtBr(c.data)}
-            </option>
-          ))}
-        </select>
-        {pastaPath ? (
-          <p className="text-xs">Pasta da consulta: {pastaPath}</p>
-        ) : (
-          consultaId && (
-            <p className="text-xs text-amber-700">
-              (Esta consulta ainda não tem pasta. Crie a consulta pela Agenda.)
+        <div className="p-6 space-y-4">
+          <div className="flex gap-2 items-center flex-wrap">
+            <button
+              onClick={onStart}
+              disabled={!podeIniciar || recState === "recording"}
+              className="px-4 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+            >
+              Iniciar gravação
+            </button>
+
+            <button
+              onClick={onFinalize}
+              disabled={recState !== "recording"}
+              className="px-4 py-2 rounded-lg border border-gray-300 bg-white hover:bg-gray-50 disabled:opacity-50"
+              title="Finaliza a gravação e prepara o arquivo"
+            >
+              Finalizar
+            </button>
+
+            <button
+              onClick={onUpload}
+              disabled={!audioBlob || !consultaId}
+              className="px-4 py-2 rounded-lg bg-[#1E63F3] text-white hover:bg-[#0F4CCF] disabled:opacity-50"
+              title={!audioBlob ? "Finalize a gravação primeiro" : ""}
+            >
+              Salvar em arquivo
+            </button>
+
+            <span className="ml-2 text-sm text-gray-600">
+              Estado: <b>{estadoVisivel}</b> • {hhmmss}
+            </span>
+          </div>
+
+          <div className="space-y-1 w-full">
+            <label className="text-sm text-gray-600">Transcrição (ao vivo)</label>
+            <textarea
+              className="w-full border border-gray-300 rounded-lg p-3 min-h-[180px] focus:outline-none"
+              placeholder="A transcrição aparecerá aqui durante a gravação…"
+              value={textLive}
+              onChange={(e) => setTextLive(e.target.value)}
+            />
+          </div>
+
+          {audioBlob && (
+            <p className="text-xs text-gray-500">
+              Áudio pronto para upload ({(audioBlob.size / 1024).toFixed(1)} KB).
             </p>
-          )
-        )}
-      </div>
+          )}
 
-      {/* Controles de gravação (simplificados) */}
-      <div className="border rounded p-3 space-y-3">
-        <div className="flex gap-2 items-center flex-wrap">
-          <button
-            onClick={onStart}
-            disabled={!podeIniciar || recState === "recording"}
-            className="px-3 py-2 rounded border disabled:opacity-50"
-          >
-            Iniciar gravação
-          </button>
-
-          <button
-            onClick={onFinalize}
-            disabled={recState !== "recording"}
-            className="px-3 py-2 rounded border disabled:opacity-50"
-            title="Finaliza a gravação e prepara o arquivo"
-          >
-            Finalizar
-          </button>
-
-          <button
-            onClick={onUpload}
-            disabled={!audioBlob || !consultaId}
-            className="px-3 py-2 rounded bg-black text-white disabled:opacity-50"
-            title={!audioBlob ? "Finalize a gravação primeiro" : ""}
-          >
-            Salvar em arquivo
-          </button>
-
-          <span className="ml-2 text-sm">
-            Estado: <b>{estadoVisivel}</b> • {hhmmss}
-          </span>
+          {loading && <p className="text-gray-500">Carregando…</p>}
+          {errMsg && <p className="text-red-600">Erro: {errMsg}</p>}
         </div>
-
-        <div className="space-y-1 w-full">
-          <label className="text-sm">Transcrição (ao vivo)</label>
-          <textarea
-            className="w-full border rounded p-2 min-h-[180px]"
-            placeholder="A transcrição aparecerá aqui durante a gravação…"
-            value={textLive}
-            onChange={(e) => setTextLive(e.target.value)}
-          />
-        </div>
-
-        {audioBlob && (
-          <p className="text-xs">
-            Áudio pronto para upload ({(audioBlob.size / 1024).toFixed(1)} KB).
-          </p>
-        )}
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
