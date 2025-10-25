@@ -4,7 +4,6 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import AgendaPageClient from "./AgendaPageClient";
 
-
 export const dynamic = "force-dynamic";
 
 export default async function Page() {
@@ -13,8 +12,6 @@ export default async function Page() {
 
   return (
     <div className="">
-      <div>
-      
       {medicoId ? (
         <AgendaPageClient medicoId={medicoId} />
       ) : (
