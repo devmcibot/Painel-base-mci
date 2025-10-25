@@ -14,9 +14,7 @@ export default async function Page() {
   return (
     <div className="">
       <div>
-        <Link href="/medico/consultas" className="underline">&larr; Início</Link>
-      </div>
-      <h1 className="text-2xl font-semibold">Nova consulta — Agenda</h1>
+      
       {medicoId ? (
         <AgendaPageClient medicoId={medicoId} />
       ) : (
