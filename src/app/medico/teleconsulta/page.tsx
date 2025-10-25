@@ -17,11 +17,20 @@ export default async function TeleConsultaPage({ searchParams }: PageProps) {
   if (!session?.user) redirect("/login?callbackUrl=/medico/teleconsulta");
 
   const medicoId = (session.user as { medicoId?: number | null }).medicoId ?? null;
+
   if (!medicoId) {
     return (
-      <main className="max-w-4xl mx-auto p-6">
-        <h1 className="text-2xl font-semibold">Tele-Consulta</h1>
-        <p className="text-sm text-red-600 mt-2">Usuário não vinculado a médico.</p>
+      <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
+        <header className="mb-6">
+          <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">Tele-Consulta</h1>
+          <p className="text-gray-500 mt-1">Usuário não vinculado a médico.</p>
+        </header>
+
+        <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <p className="text-gray-700">
+            Faça login com um usuário de médico para iniciar uma tele-consulta.
+          </p>
+        </section>
       </main>
     );
   }
@@ -57,30 +66,58 @@ export default async function TeleConsultaPage({ searchParams }: PageProps) {
 
     if (c?.paciente && c.paciente.medicoId === medicoId) {
       return (
-        <main className="max-w-5xl mx-auto p-6 space-y-6">
-          <h1 className="text-2xl font-semibold">Tele-Consulta</h1>
-          <Call
-            medicoId={c.paciente.medicoId}
-            pacienteId={c.paciente.id}
-            nome={c.paciente.nome}
-            cpf={c.paciente.cpf}
-            consultaId={consultaId}
-          />
+        <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10 space-y-6">
+          <header>
+            <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">Tele-Consulta</h1>
+            <p className="text-gray-500 mt-1">
+              Sessão de vídeo com o paciente selecionado.
+            </p>
+          </header>
+
+          <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="px-6 py-3 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-[#1E63F3]">
+                Chamada em andamento
+              </h2>
+            </div>
+            <div className="p-4 md:p-6">
+              <Call
+                medicoId={c.paciente.medicoId}
+                pacienteId={c.paciente.id}
+                nome={c.paciente.nome}
+                cpf={c.paciente.cpf}
+                consultaId={consultaId}
+              />
+            </div>
+          </section>
         </main>
       );
     }
   }
 
-  // Caso contrário: mostra seletor
+  // Caso contrário: mostra o seletor (escolha de paciente/consulta)
   return (
-    <main className="max-w-5xl mx-auto p-6 space-y-6">
-      <h1 className="text-2xl font-semibold">Tele-Consulta</h1>
-      <TeleChooser
-        pacientes={pacientes.map((p) => ({ id: p.id, nome: p.nome, cpf: p.cpf }))}
-        consultas={consultas.map((c) => ({ id: c.id, dataISO: c.data.toISOString() }))}
-        selectedPacienteId={pacienteId}
-        selectedConsultaId={consultaId}
-      />
+    <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10 space-y-6">
+      <header>
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">Tele-Consulta</h1>
+        <p className="text-gray-500 mt-1">
+          Selecione o paciente e a consulta para iniciar a chamada.
+        </p>
+      </header>
+
+      <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="px-6 py-3 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-[#1E63F3]">Seleção</h2>
+        </div>
+        <div className="p-4 md:p-6">
+          <TeleChooser
+            pacientes={pacientes.map((p) => ({ id: p.id, nome: p.nome, cpf: p.cpf }))}
+            consultas={consultas.map((c) => ({ id: c.id, dataISO: c.data.toISOString() }))}
+            selectedPacienteId={pacienteId}
+            selectedConsultaId={consultaId}
+          />
+        </div>
+      </section>
     </main>
   );
 }
