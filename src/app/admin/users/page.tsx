@@ -1,4 +1,5 @@
 import UsersTable from "./users-table";
+import LogoutButton from "@/components/LogoutButton";
 
 // sem cache, sempre renderiza de novo
 export const dynamic = "force-dynamic";
