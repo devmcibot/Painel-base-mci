@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminHome() {
   const session = await getServerSession(authOptions);
-  if (!session?.user) redirect("/login?callbackUrl=/admin");
+  if (!session?.user) redirect("/");
 
   return (
     <div>
