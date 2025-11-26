@@ -2,6 +2,7 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 
 type FileRow = {
   name: string;
@@ -96,13 +97,39 @@ function formatFileLabel(name: string) {
   return name;
 }
 
-/** ícone por extensão simples */
-function iconFor(name: string) {
-  const n = name.toLowerCase();
-  if (n.endsWith(".txt") || n.endsWith(".docx")) return "📄";
-  if (n.endsWith(".webm") || n.endsWith(".mp3") || n.endsWith(".wav"))
-    return "🎧";
-  return "📦";
+/** componente de ícone por tipo de arquivo */
+function FileIcon({ name }: { name: string }) {
+  const lower = name.toLowerCase();
+
+  // laudo -> ícone do Word (public/icons/wordicon.png)
+  if (lower.startsWith("laudo_")) {
+    return (
+      <Image
+        src="/icons/wordicon.png"
+        alt="Laudo"
+        width={18}
+        height={18}
+        className="inline-block"
+      />
+    );
+  }
+
+  // áudio
+  if (
+    lower.endsWith(".webm") ||
+    lower.endsWith(".mp3") ||
+    lower.endsWith(".wav")
+  ) {
+    return <span aria-hidden>🎧</span>;
+  }
+
+  // texto/anamnese/doc
+  if (lower.endsWith(".txt") || lower.endsWith(".docx")) {
+    return <span aria-hidden>📄</span>;
+  }
+
+  // genérico
+  return <span aria-hidden>📦</span>;
 }
 
 /**
@@ -333,7 +360,7 @@ export default function Explorer({ folderPath, files }: Props) {
             className="px-3 py-2 flex items-center justify-between"
           >
             <div className="flex items-center gap-2">
-              <span aria-hidden>{iconFor(name)}</span>
+              <FileIcon name={name} />
               <span className="text-sm break-all" title={name}>
                 {formatFileLabel(name)}
               </span>
