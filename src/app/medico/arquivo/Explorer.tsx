@@ -14,11 +14,94 @@ type Props = {
   files: string[];
 };
 
+/** formata data/hora a partir dos tokens do nome do arquivo */
+function formatDateTimeFromTokens(dateStr?: string, timeStr?: string) {
+  if (!dateStr || dateStr.length !== 8 || !timeStr || timeStr.length < 4) {
+    return null;
+  }
+
+  const year = Number(dateStr.slice(0, 4));
+  const month = Number(dateStr.slice(4, 6));
+  const day = Number(dateStr.slice(6, 8));
+  const hour = Number(timeStr.slice(0, 2));
+  const minute = Number(timeStr.slice(2, 4));
+
+  if (
+    Number.isNaN(year) ||
+    Number.isNaN(month) ||
+    Number.isNaN(day) ||
+    Number.isNaN(hour) ||
+    Number.isNaN(minute)
+  ) {
+    return null;
+  }
+
+  const d = new Date(year, month - 1, day, hour, minute);
+  if (Number.isNaN(d.getTime())) return null;
+
+  return d.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** monta um rótulo amigável pro arquivo */
+function formatFileLabel(name: string) {
+  const lower = name.toLowerCase();
+  const base = lower.replace(/\.[^/.]+$/, ""); // remove extensão
+  const parts = base.split("_");
+
+  // anamnese texto:  anamnese_paciente_20251114_173059_0010.txt
+  // anamnese áudio:  anamnese_paciente_e_20251114_173059_0010.webm
+  if (lower.startsWith("anamnese_paciente_")) {
+    const isAudio =
+      lower.endsWith(".webm") ||
+      lower.endsWith(".mp3") ||
+      lower.endsWith(".wav");
+
+    const dateStr = parts[parts.length - 3]; // 20251114
+    const timeStr = parts[parts.length - 2]; // 173059
+    const formatted = formatDateTimeFromTokens(dateStr, timeStr);
+
+    const prefix = isAudio ? "Áudio da anamnese" : "Anamnese";
+
+    if (formatted) return `${prefix} – ${formatted}`;
+    return prefix;
+  }
+
+  // laudo_1763752168901.docx / .txt (timestamp em ms)
+  if (lower.startsWith("laudo_")) {
+    const tsStr = base.slice("laudo_".length);
+    const tsNum = Number(tsStr);
+    if (!Number.isNaN(tsNum)) {
+      const d = new Date(tsNum);
+      if (!Number.isNaN(d.getTime())) {
+        const formatted = d.toLocaleString("pt-BR", {
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+        return `Laudo – ${formatted}`;
+      }
+    }
+    return "Laudo";
+  }
+
+  // fallback: mostra nome original
+  return name;
+}
+
 /** ícone por extensão simples */
 function iconFor(name: string) {
   const n = name.toLowerCase();
-  if (n.endsWith(".txt")) return "📄";
-  if (n.endsWith(".webm") || n.endsWith(".mp3") || n.endsWith(".wav")) return "🎧";
+  if (n.endsWith(".txt") || n.endsWith(".docx")) return "📄";
+  if (n.endsWith(".webm") || n.endsWith(".mp3") || n.endsWith(".wav"))
+    return "🎧";
   return "📦";
 }
 
@@ -62,7 +145,8 @@ function extractPacienteFromFolderPath(folderPath: string) {
 
 /** checa se é um arquivo de texto (anamnese) para liberar Laudo IA */
 function isTextFile(name: string) {
-  return name.toLowerCase().endsWith(".txt");
+  const n = name.toLowerCase();
+  return n.endsWith(".txt");
 }
 
 export default function Explorer({ folderPath, files }: Props) {
@@ -229,9 +313,7 @@ export default function Explorer({ folderPath, files }: Props) {
         >
           ⬆️ Upload (vários)
         </button>
-        {busy && (
-          <span className="text-sm text-gray-500">Processando…</span>
-        )}
+        {busy && <span className="text-sm text-gray-500">Processando…</span>}
         <input
           ref={inputRef}
           type="file"
@@ -252,7 +334,9 @@ export default function Explorer({ folderPath, files }: Props) {
           >
             <div className="flex items-center gap-2">
               <span aria-hidden>{iconFor(name)}</span>
-              <span className="text-sm break-all">{name}</span>
+              <span className="text-sm break-all" title={name}>
+                {formatFileLabel(name)}
+              </span>
             </div>
             <div className="flex items-center gap-2">
               {/* Visualizar */}
