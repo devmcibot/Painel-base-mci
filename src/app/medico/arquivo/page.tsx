@@ -8,6 +8,17 @@ import Explorer from "./Explorer";
 type SearchProps = { searchParams: Promise<{ p?: string; c?: string }> };
 export const dynamic = "force-dynamic";
 
+// Formata data da consulta em "dd/mm/aaaa hh:mm"
+function formatConsultaLabel(data: Date) {
+  return data.toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export default async function ArquivosPage({ searchParams }: SearchProps) {
   const sp = await searchParams;
   const session = await getServerSession(authOptions);
@@ -17,8 +28,12 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
     return (
       <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
         <header className="mb-8">
-          <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">Arquivos</h1>
-          <p className="text-gray-500 mt-1">Você precisa estar logado como médico.</p>
+          <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">
+            Arquivos
+          </h1>
+          <p className="text-gray-500 mt-1">
+            Você precisa estar logado como médico.
+          </p>
         </header>
 
         <section className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
@@ -75,7 +90,11 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
     return parts[parts.length - 1] ?? null;
   };
 
-  const friendly = (c: { id: number; data: Date; pastaPath: string | null }) =>
+  const friendly = (c: {
+    id: number;
+    data: Date;
+    pastaPath: string | null;
+  }) =>
     lastSegment(c.pastaPath) ??
     `${c.data.getFullYear()}${String(c.data.getMonth() + 1).padStart(
       2,
@@ -92,8 +111,12 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
   return (
     <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10">
       <header className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">Arquivos</h1>
-        <p className="text-gray-500 mt-1">Navegue por pacientes, consultas e documentos.</p>
+        <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">
+          Arquivos
+        </h1>
+        <p className="text-gray-500 mt-1">
+          Navegue por pacientes, consultas e documentos.
+        </p>
       </header>
 
       <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -158,7 +181,7 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
                       active ? "bg-gray-100" : ""
                     }`}
                   >
-                    {folder}
+                    {formatConsultaLabel(c.data)}
                   </Link>
                 );
               })}
