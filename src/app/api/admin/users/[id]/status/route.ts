@@ -14,15 +14,30 @@ export async function PATCH(
 
   const id = Number(params.id);
   const { status } = await req.json(); // "ACTIVE" | "BLOCKED"
+
   if (!["ACTIVE", "BLOCKED"].includes(status)) {
     return NextResponse.json({ error: "status inválido" }, { status: 400 });
   }
 
-  const user = await prisma.user.update({
-    where: { id },
-    data: { status },
-    select: { id: true, email: true, name: true, role: true, status: true },
-  });
+  try {
+    const user = await prisma.user.update({
+      where: { id },
+      data: { status },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        status: true,
+      },
+    });
 
-  return NextResponse.json(user);
+    return NextResponse.json(user);
+  } catch (err) {
+    console.error("Erro PATCH /api/admin/users/[id]/status:", err);
+    return NextResponse.json(
+      { error: "Erro ao alterar status do usuário" },
+      { status: 500 }
+    );
+  }
 }
