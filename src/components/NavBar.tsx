@@ -29,7 +29,7 @@ export default async function NavBar() {
   return (
     <nav className="w-56 py-16 px-8 fixed left-0 top-0 h-dvh border-r flex flex-col justify-between">
       <div>
-        <Link href="{homeLink}" className="font-bold text-4xl mb-16 flex gap-2">
+        <Link href="/" className="font-bold text-4xl mb-16 flex gap-2">
           <Image src={logomci} alt="logo" width={120} />
         </Link>
 
