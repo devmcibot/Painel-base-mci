@@ -8,12 +8,18 @@ type User = {
   email: string;
   role: "ADMIN" | "MEDICO";
   status: "ACTIVE" | "BLOCKED";
+  crm?: string | null;
   createdAt?: string;
 };
 
 export default function UsersTable() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  // se tiver editingId => estamos editando
+  const [editingId, setEditingId] = useState<number | null>(null);
+
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -21,7 +27,6 @@ export default function UsersTable() {
     crm: "",
     role: "MEDICO" as "ADMIN" | "MEDICO",
   });
-  const [err, setErr] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -35,20 +40,87 @@ export default function UsersTable() {
     load();
   }, []);
 
-  async function createUser(e: React.FormEvent) {
+  // CRIAR ou EDITAR (mesmo submit)
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
-    const res = await fetch("/api/admin/users", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
+
+    try {
+      const payload = {
+        name: form.name,
+        email: form.email,
+        password: form.password || undefined, // se vazio, backend ignora
+        crm: form.role === "MEDICO" ? form.crm : "",
+        role: form.role,
+      };
+
+      let res: Response;
+
+      if (editingId) {
+        // EDITAR
+        res = await fetch(`/api/admin/users/${editingId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // CRIAR
+        res = await fetch("/api/admin/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setErr(j.error || "Erro ao salvar usuário");
+        return;
+      }
+
+      // reset form
+      setForm({ name: "", email: "", password: "", crm: "", role: "MEDICO" });
+      setEditingId(null);
+      await load();
+    } catch (e) {
+      console.error(e);
+      setErr("Erro ao salvar usuário");
+    }
+  }
+
+  function startEdit(u: User) {
+    setEditingId(u.id);
+    setForm({
+      name: u.name,
+      email: u.email,
+      password: "",
+      crm: u.crm || "",
+      role: u.role,
     });
+    setErr(null);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm({ name: "", email: "", password: "", crm: "", role: "MEDICO" });
+    setErr(null);
+  }
+
+  async function deleteUser(id: number) {
+    const ok = window.confirm("Tem certeza que deseja excluir este usuário?");
+    if (!ok) return;
+
+    setErr(null);
+    const res = await fetch(`/api/admin/users/${id}`, {
+      method: "DELETE",
+    });
+
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));
-      setErr(j.error || "Erro ao criar usuário");
+      setErr(j.error || "Erro ao excluir usuário");
       return;
     }
-    setForm({ name: "", email: "", password: "", crm: "", role: "MEDICO" });
+
     await load();
   }
 
@@ -64,7 +136,8 @@ export default function UsersTable() {
 
   return (
     <div className="space-y-6">
-      <form onSubmit={createUser} className="flex flex-wrap gap-2 items-end">
+      {/* FORMULÁRIO */}
+      <form onSubmit={handleSubmit} className="flex flex-wrap gap-2 items-end">
         <div className="flex flex-col">
           <label className="text-xs">Nome</label>
           <input
@@ -85,7 +158,9 @@ export default function UsersTable() {
         </div>
 
         <div className="flex flex-col">
-          <label className="text-xs">Senha</label>
+          <label className="text-xs">
+            Senha {editingId && <span>(deixe em branco para não mudar)</span>}
+          </label>
           <input
             className="border rounded px-3 py-2"
             type="password"
@@ -99,7 +174,9 @@ export default function UsersTable() {
           <select
             className="border rounded px-3 py-2"
             value={form.role}
-            onChange={(e) => setForm({ ...form, role: e.target.value as "ADMIN" | "MEDICO" })}
+            onChange={(e) =>
+              setForm({ ...form, role: e.target.value as "ADMIN" | "MEDICO" })
+            }
           >
             <option value="MEDICO">MÉDICO</option>
             <option value="ADMIN">ADMIN</option>
@@ -113,14 +190,30 @@ export default function UsersTable() {
             value={form.crm}
             onChange={(e) => setForm({ ...form, crm: e.target.value })}
             disabled={form.role === "ADMIN"}
-            placeholder={form.role === "ADMIN" ? "Não aplicável para ADMIN" : ""}
+            placeholder={
+              form.role === "ADMIN" ? "Não aplicável para ADMIN" : ""
+            }
           />
         </div>
 
-        <button className="px-4 py-2 rounded bg-black text-white">Adicionar usuário</button>
+        <button className="px-4 py-2 rounded bg-black text-white">
+          {editingId ? "Salvar alterações" : "Adicionar usuário"}
+        </button>
+
+        {editingId && (
+          <button
+            type="button"
+            onClick={cancelEdit}
+            className="px-4 py-2 rounded border border-gray-400 ml-2"
+          >
+            Cancelar edição
+          </button>
+        )}
+
         {err && <span className="text-red-600 text-sm ml-2">{err}</span>}
       </form>
 
+      {/* TABELA */}
       {loading ? (
         <div>Carregando...</div>
       ) : (
@@ -144,12 +237,26 @@ export default function UsersTable() {
                   <td className="p-2 border">{u.email}</td>
                   <td className="p-2 border">{u.role}</td>
                   <td className="p-2 border">{u.status}</td>
-                  <td className="p-2 border">
+                  <td className="p-2 border space-x-2">
                     <button
                       onClick={() => toggleBlock(u)}
                       className="px-3 py-1 rounded border hover:bg-gray-50"
                     >
                       {u.status === "ACTIVE" ? "Bloquear" : "Desbloquear"}
+                    </button>
+
+                    <button
+                      onClick={() => startEdit(u)}
+                      className="px-3 py-1 rounded border hover:bg-gray-50"
+                    >
+                      Editar
+                    </button>
+
+                    <button
+                      onClick={() => deleteUser(u.id)}
+                      className="px-3 py-1 rounded border border-red-500 text-red-600 hover:bg-red-50"
+                    >
+                      Excluir
                     </button>
                   </td>
                 </tr>
