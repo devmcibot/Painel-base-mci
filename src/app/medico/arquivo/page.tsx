@@ -121,9 +121,10 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
         </p>
       </header>
 
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* md: 4 colunas → Pacientes (1), Consultas (1), Arquivos (2) */}
+      <section className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {/* Pacientes */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden md:col-span-1">
           <div className="px-4 py-3 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-[#1E63F3]">Pacientes</h2>
           </div>
@@ -152,7 +153,7 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
         </div>
 
         {/* Consultas */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden md:col-span-1">
           <div className="px-4 py-3 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-[#1E63F3]">Consultas</h2>
           </div>
@@ -191,7 +192,7 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
         </div>
 
         {/* Arquivos */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden md:col-span-2">
           <div className="px-4 py-3 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-[#1E63F3]">Arquivos</h2>
           </div>
