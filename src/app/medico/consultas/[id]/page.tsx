@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Editor from "./Editor";
-import { toDatetimeLocalValue } from "@/lib/datetime";
+import { formatInTimeZone } from "date-fns-tz";
 
 function StatusBadge({ status }: { status: string }) {
   const s = status?.toUpperCase?.() ?? "";
@@ -14,14 +14,21 @@ function StatusBadge({ status }: { status: string }) {
       : s === "CANCELADA"
       ? "bg-rose-50 text-rose-700 border-rose-200"
       : "bg-indigo-50 text-indigo-700 border-indigo-200";
+
   return (
-    <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border ${styles}`}>
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium border ${styles}`}
+    >
       {status}
     </span>
   );
 }
 
-export default async function ConsultaPage({ params }: { params: { id: string } }) {
+export default async function ConsultaPage({
+  params,
+}: {
+  params: { id: string };
+}) {
   const id = Number(params.id);
   if (!id || Number.isNaN(id)) return notFound();
 
@@ -31,8 +38,22 @@ export default async function ConsultaPage({ params }: { params: { id: string } 
   });
   if (!c) return notFound();
 
-  // >>> NÃO use toISOString().slice(0,16); isso é UTC e dá +3h em SP
-  const dtLocal = toDatetimeLocalValue(c.data); // YYYY-MM-DDTHH:mm no horário local
+  // Sempre mostrar no fuso do Brasil (America/Sao_Paulo)
+  const tz = "America/Sao_Paulo";
+
+  // label só para exibição
+  const dataLabel = formatInTimeZone(
+    c.data,
+    tz,
+    "dd/MM/yyyy, HH:mm"
+  );
+
+  // valor para o <input type="datetime-local">
+  const dtLocal = formatInTimeZone(
+    c.data,
+    tz,
+    "yyyy-MM-dd'T'HH:mm"
+  );
 
   return (
     <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10 space-y-6">
@@ -60,18 +81,14 @@ export default async function ConsultaPage({ params }: { params: { id: string } 
         <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
           <div className="text-gray-800">
             <div className="font-medium">
-              Paciente: <span className="font-semibold">{c.paciente?.nome ?? "-"}</span>
+              Paciente:{" "}
+              <span className="font-semibold">
+                {c.paciente?.nome ?? "-"}
+              </span>
             </div>
-            {/* data/hora atual em local time (informativa) */}
+            {/* data/hora atual em horário local do médico */}
             <div className="text-sm text-gray-500">
-              Data atual da consulta:{" "}
-              {new Date(c.data).toLocaleString("pt-BR", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
+              Data atual da consulta: {dataLabel}
             </div>
           </div>
 
@@ -79,8 +96,12 @@ export default async function ConsultaPage({ params }: { params: { id: string } 
         </div>
 
         <div className="p-4 md:p-6">
-          {/* Editor mantém a lógica já existente */}
-          <Editor id={c.id} defaultDate={dtLocal} defaultStatus={c.status as any} />
+          {/* Editor recebe o datetime local já correto */}
+          <Editor
+            id={c.id}
+            defaultDate={dtLocal}
+            defaultStatus={c.status as any}
+          />
         </div>
       </section>
     </main>
