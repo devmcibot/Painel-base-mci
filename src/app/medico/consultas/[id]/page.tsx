@@ -2,7 +2,7 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Editor from "./Editor";
-import { formatInTimeZone } from "date-fns-tz";
+import { toDatetimeLocalValue } from "@/lib/datetime";
 
 function StatusBadge({ status }: { status: string }) {
   const s = status?.toUpperCase?.() ?? "";
@@ -38,22 +38,18 @@ export default async function ConsultaPage({
   });
   if (!c) return notFound();
 
-  // Sempre mostrar no fuso do Brasil (America/Sao_Paulo)
-  const tz = "America/Sao_Paulo";
+  // valor para o input datetime-local, em horário local
+  const dtLocal = toDatetimeLocalValue(c.data); // YYYY-MM-DDTHH:mm no horário local
 
-  // label só para exibição
-  const dataLabel = formatInTimeZone(
-    c.data,
-    tz,
-    "dd/MM/yyyy, HH:mm"
-  );
-
-  // valor para o <input type="datetime-local">
-  const dtLocal = formatInTimeZone(
-    c.data,
-    tz,
-    "yyyy-MM-dd'T'HH:mm"
-  );
+  // texto informativo usando sempre fuso de São Paulo
+  const dataLabel = new Date(c.data).toLocaleString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
 
   return (
     <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10 space-y-6">
@@ -86,7 +82,6 @@ export default async function ConsultaPage({
                 {c.paciente?.nome ?? "-"}
               </span>
             </div>
-            {/* data/hora atual em horário local do médico */}
             <div className="text-sm text-gray-500">
               Data atual da consulta: {dataLabel}
             </div>
@@ -96,7 +91,6 @@ export default async function ConsultaPage({
         </div>
 
         <div className="p-4 md:p-6">
-          {/* Editor recebe o datetime local já correto */}
           <Editor
             id={c.id}
             defaultDate={dtLocal}
