@@ -1,6 +1,7 @@
+// src/app/api/admin/users/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "../../../../auth/[...nextauth]/route";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
@@ -88,7 +89,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
         data,
       });
 
-      // se for MÉDICO, garante Medico + CRM
+      // Se for MÉDICO, garante Medico + CRM
       if (role === "MEDICO") {
         if (existing.medico) {
           await tx.medico.update({
@@ -104,7 +105,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
           });
         }
       } else {
-        // se virar ADMIN, zera CRM se existir Medico
+        // Se virar ADMIN, zera CRM se existir Medico
         if (existing.medico) {
           await tx.medico.update({
             where: { id: existing.medico.id },
@@ -145,7 +146,7 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
   }
 
   try {
-    // Verifica se há vínculos fortes
+    // Verifica vínculos fortes do médico
     const medico = await prisma.medico.findUnique({
       where: { userId: id },
       include: {
