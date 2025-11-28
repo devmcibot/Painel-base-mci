@@ -90,55 +90,22 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
       "0"
     )}${String(c.data.getDate()).padStart(2, "0")}_${String(
       c.data.getHours()
-    ).padStart(2, "0")}${String(c.data.getMinutes()).padStart(2, "0")}_${String(
-      c.id
-    ).padStart(6, "0")}`;
+    ).padStart(2, "0")}${String(c.data.getMinutes()).padStart(
+      2,
+      "0"
+    )}_${String(c.id).padStart(6, "0")}`;
 
-  // Formata label da consulta usando a pasta (que tem a hora certinha).
-  // Ex.: folder = "20251125_0900_000074" -> "25/11/2025, 09:00"
-  const formatConsultaLabelFromFolder = (
-    folder: string | null,
-    data: Date
-  ) => {
-    if (folder) {
-      const [dateStr, timeStr] = folder.split("_");
-      if (dateStr && timeStr && dateStr.length === 8 && timeStr.length >= 4) {
-        const year = Number(dateStr.slice(0, 4));
-        const month = Number(dateStr.slice(4, 6));
-        const day = Number(dateStr.slice(6, 8));
-        const hour = Number(timeStr.slice(0, 2));
-        const minute = Number(timeStr.slice(2, 4));
-
-        if (
-          !Number.isNaN(year) &&
-          !Number.isNaN(month) &&
-          !Number.isNaN(day) &&
-          !Number.isNaN(hour) &&
-          !Number.isNaN(minute)
-        ) {
-          const d = new Date(year, month - 1, day, hour, minute);
-          if (!Number.isNaN(d.getTime())) {
-            return d.toLocaleString("pt-BR", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "numeric",
-              hour: "2-digit",
-              minute: "2-digit",
-            });
-          }
-        }
-      }
-    }
-
-    // fallback: se por algum motivo não der pra usar a pasta, usa o campo data
-    return data.toLocaleString("pt-BR", {
+  // Formata label da consulta SEM usar a hora da pasta,
+  // sempre baseado no campo "data" em America/Sao_Paulo
+  const formatConsultaLabel = (data: Date) =>
+    data.toLocaleString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "America/Sao_Paulo",
     });
-  };
 
   const fullFolderPath =
     selected && selectedFolder ? `${base}/${selectedFolder}` : null;
@@ -216,7 +183,7 @@ export default async function ArquivosPage({ searchParams }: SearchProps) {
                       active ? "bg-gray-100" : ""
                     }`}
                   >
-                    {formatConsultaLabelFromFolder(folder, c.data)}
+                    {formatConsultaLabel(c.data)}
                   </Link>
                 );
               })}
