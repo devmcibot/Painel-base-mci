@@ -2,7 +2,34 @@ import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Editor from "./Editor";
-import { toDatetimeLocalValue } from "@/lib/datetime";
+
+// helper para montar o valor do <input type="datetime-local">
+// sempre no fuso "America/Sao_Paulo"
+function toLocalInputValue(date: Date) {
+  const formatter = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  const parts = formatter.formatToParts(date);
+
+  const get = (type: string) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+
+  const day = get("day");    // 01
+  const month = get("month"); // 12
+  const year = get("year");  // 2025
+  const hour = get("hour");  // 08
+  const minute = get("minute"); // 00
+
+  // formato exigido pelo input datetime-local
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
 
 function StatusBadge({ status }: { status: string }) {
   const s = status?.toUpperCase?.() ?? "";
@@ -38,11 +65,10 @@ export default async function ConsultaPage({
   });
   if (!c) return notFound();
 
-  // valor para o input datetime-local, em horário local
-  const dtLocal = toDatetimeLocalValue(c.data); // YYYY-MM-DDTHH:mm no horário local
+  const d = new Date(c.data);
 
-  // texto informativo usando sempre fuso de São Paulo
-  const dataLabel = new Date(c.data).toLocaleString("pt-BR", {
+  // texto informativo (08:00 certinho)
+  const dataLabel = d.toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -50,6 +76,9 @@ export default async function ConsultaPage({
     minute: "2-digit",
     timeZone: "America/Sao_Paulo",
   });
+
+  // valor para o input datetime-local, também em America/Sao_Paulo
+  const dtLocal = toLocalInputValue(d);
 
   return (
     <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10 space-y-6">
