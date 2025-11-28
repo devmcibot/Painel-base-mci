@@ -133,9 +133,7 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
   }
 }
 
-// =======================
-// DELETE -> excluir usuário
-// =======================
+// EXCLUIR usuário + todo histórico vinculado ao médico
 export async function DELETE(req: NextRequest, { params }: RouteContext) {
   const check = await requireAdmin();
   if (!check.ok) return check.res;
@@ -146,38 +144,35 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
   }
 
   try {
-    // Verifica vínculos fortes do médico
-    const medico = await prisma.medico.findUnique({
-      where: { userId: id },
-      include: {
-        pacientes: true,
-        consultas: true,
-        eventos: true,
-      },
-    });
-
-    if (
-      medico &&
-      (medico.pacientes.length > 0 ||
-        medico.consultas.length > 0 ||
-        medico.eventos.length > 0)
-    ) {
-      return NextResponse.json(
-        {
-          error:
-            "Não é possível excluir um médico que já possui pacientes/consultas/eventos vinculados. Bloqueie o usuário em vez disso.",
-        },
-        { status: 400 }
-      );
-    }
-
     await prisma.$transaction(async (tx) => {
+      // pega médico vinculado a esse user (se existir)
+      const medico = await tx.medico.findUnique({
+        where: { userId: id },
+        select: { id: true },
+      });
+
       if (medico) {
+        const medicoId = medico.id;
+
+        // 1) Laudos do médico
+        await tx.laudoJob.deleteMany({ where: { medicoId } });
+
+        // 2) Eventos de agenda do médico
+        await tx.agendaEvento.deleteMany({ where: { medicoId } });
+
+        // 3) Consultas do médico (Transcript / ExternalLink / etc caem por cascade)
+        await tx.consulta.deleteMany({ where: { medicoId } });
+
+        // 4) Pacientes desse médico
+        await tx.paciente.deleteMany({ where: { medicoId } });
+
+        // 5) Médico em si (horários/ausências caem por cascade)
         await tx.medico.delete({
-          where: { id: medico.id },
+          where: { id: medicoId },
         });
       }
 
+      // 6) Usuário
       await tx.user.delete({
         where: { id },
       });
@@ -187,7 +182,7 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
   } catch (err) {
     console.error("Erro DELETE /api/admin/users/[id]:", err);
     return NextResponse.json(
-      { error: "Erro ao excluir usuário" },
+      { error: "Erro ao excluir usuário (hard delete)" },
       { status: 500 }
     );
   }
