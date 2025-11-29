@@ -104,7 +104,11 @@ export default async function MedicoHome() {
       {/* Grid de estatísticas */}
       <section className="grid grid-cols-1 sm:grid-cols-3 gap-6 mb-10">
         <StatCard title="Consultas Hoje" value={consultasHojeCount} icon={"💉"} />
-        <StatCard title="Pacientes Totais" value={totalPacientesCount} icon={"👤"} />
+        <StatCard
+          title="Pacientes Totais"
+          value={totalPacientesCount}
+          icon={"👤"}
+        />
         <StatCard
           title="Consultas Próximas (7d)"
           value={proximasConsultas.length}
@@ -123,37 +127,45 @@ export default async function MedicoHome() {
         <div className="p-4 md:p-6">
           {proximasConsultas.length > 0 ? (
             <ul className="space-y-3">
-              {proximasConsultas.map((consulta) => (
-                <li
-                  key={consulta.id}
-                  className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition"
-                >
-                  <div>
-                    <p className="font-semibold text-gray-800">
-                      {consulta.paciente.nome}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {new Date(consulta.data).toLocaleDateString("pt-BR", {
-                        weekday: "long",
-                        day: "2-digit",
-                        month: "long",
-                      })}{" "}
-                      às{" "}
-                      {new Date(consulta.data).toLocaleTimeString("pt-BR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </p>
-                  </div>
+              {proximasConsultas.map((consulta) => {
+                const d = new Date(consulta.data);
 
-                  <Link
-                    href={`/medico/consultas/${consulta.id}`}
-                    className="text-sm font-medium text-[#1E63F3] hover:underline"
+                const dataLabel = d.toLocaleDateString("pt-BR", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long",
+                  timeZone: "America/Sao_Paulo",
+                });
+
+                const horaLabel = d.toLocaleTimeString("pt-BR", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                  timeZone: "America/Sao_Paulo",
+                });
+
+                return (
+                  <li
+                    key={consulta.id}
+                    className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 p-3 rounded-lg bg-gray-50 hover:bg-gray-100 transition"
                   >
-                    Ver detalhes
-                  </Link>
-                </li>
-              ))}
+                    <div>
+                      <p className="font-semibold text-gray-800">
+                        {consulta.paciente.nome}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {dataLabel} às {horaLabel}
+                      </p>
+                    </div>
+
+                    <Link
+                      href={`/medico/consultas/${consulta.id}`}
+                      className="text-sm font-medium text-[#1E63F3] hover:underline"
+                    >
+                      Ver detalhes
+                    </Link>
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="text-gray-500 text-center py-6">
