@@ -1,55 +1,51 @@
-// src/app/api/admin/users/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
 
-type RouteContext = {
-  params: { id: string };
-};
+type Ctx = { params: Promise<{ id: string }> };
 
-// Garante que é ADMIN
 async function requireAdmin() {
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
     return {
-      ok: false,
+      ok: false as const,
       res: NextResponse.json({ error: "Não autenticado" }, { status: 401 }),
     };
   }
 
-  if ((session.user as any).role !== "ADMIN") {
+  if ((session.user as { role?: string }).role !== "ADMIN") {
     return {
-      ok: false,
+      ok: false as const,
       res: NextResponse.json({ error: "Acesso negado" }, { status: 403 }),
     };
   }
 
-  return { ok: true, session };
+  return { ok: true as const, session };
 }
 
-// =====================
-// PUT  -> editar usuário
-// =====================
-export async function PUT(req: NextRequest, { params }: RouteContext) {
+type PutBody = {
+  name?: string;
+  email?: string;
+  password?: string;
+  role?: "ADMIN" | "MEDICO";
+  crm?: string;
+};
+
+export async function PUT(req: NextRequest, ctx: Ctx) {
   const check = await requireAdmin();
   if (!check.ok) return check.res;
 
-  const id = Number(params.id);
-  if (Number.isNaN(id)) {
+  const { id: idStr } = await ctx.params;
+  const id = Number(idStr);
+  if (!Number.isFinite(id) || id <= 0) {
     return NextResponse.json({ error: "ID inválido" }, { status: 400 });
   }
 
-  const body = await req.json();
-  const { name, email, password, role, crm } = body as {
-    name?: string;
-    email?: string;
-    password?: string;
-    role?: "ADMIN" | "MEDICO";
-    crm?: string;
-  };
+  const body = (await req.json()) as PutBody;
+  const { name, email, password, role, crm } = body;
 
   if (!name || !email || !role) {
     return NextResponse.json(
@@ -65,22 +61,18 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     });
 
     if (!existing) {
-      return NextResponse.json(
-        { error: "Usuário não encontrado" },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 });
     }
 
-    const data: any = {
-      name,
-      email,
-      role,
-    };
+    const data: {
+      name: string;
+      email: string;
+      role: "ADMIN" | "MEDICO";
+      hashedPwd?: string;
+    } = { name, email, role };
 
-    // Usa o campo correto do Prisma: hashedPwd
     if (password && password.trim().length > 0) {
-      const hash = await bcrypt.hash(password, 10);
-      data.hashedPwd = hash;
+      data.hashedPwd = await bcrypt.hash(password, 10);
     }
 
     const updatedUser = await prisma.$transaction(async (tx) => {
@@ -89,7 +81,6 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
         data,
       });
 
-      // Se for MÉDICO, garante Medico + CRM
       if (role === "MEDICO") {
         if (existing.medico) {
           await tx.medico.update({
@@ -105,7 +96,6 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
           });
         }
       } else {
-        // Se virar ADMIN, zera CRM se existir Medico
         if (existing.medico) {
           await tx.medico.update({
             where: { id: existing.medico.id },
@@ -126,26 +116,22 @@ export async function PUT(req: NextRequest, { params }: RouteContext) {
     });
   } catch (err) {
     console.error("Erro PUT /api/admin/users/[id]:", err);
-    return NextResponse.json(
-      { error: "Erro ao atualizar usuário" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Erro ao atualizar usuário" }, { status: 500 });
   }
 }
 
-// EXCLUIR usuário + todo histórico vinculado ao médico
-export async function DELETE(req: NextRequest, { params }: RouteContext) {
+export async function DELETE(_req: NextRequest, ctx: Ctx) {
   const check = await requireAdmin();
   if (!check.ok) return check.res;
 
-  const id = Number(params.id);
-  if (Number.isNaN(id)) {
+  const { id: idStr } = await ctx.params;
+  const id = Number(idStr);
+  if (!Number.isFinite(id) || id <= 0) {
     return NextResponse.json({ error: "ID inválido" }, { status: 400 });
   }
 
   try {
     await prisma.$transaction(async (tx) => {
-      // pega médico vinculado a esse user (se existir)
       const medico = await tx.medico.findUnique({
         where: { userId: id },
         select: { id: true },
@@ -154,28 +140,15 @@ export async function DELETE(req: NextRequest, { params }: RouteContext) {
       if (medico) {
         const medicoId = medico.id;
 
-        // 1) Laudos do médico
         await tx.laudoJob.deleteMany({ where: { medicoId } });
-
-        // 2) Eventos de agenda do médico
         await tx.agendaEvento.deleteMany({ where: { medicoId } });
-
-        // 3) Consultas do médico (Transcript / ExternalLink / etc caem por cascade)
         await tx.consulta.deleteMany({ where: { medicoId } });
-
-        // 4) Pacientes desse médico
         await tx.paciente.deleteMany({ where: { medicoId } });
 
-        // 5) Médico em si (horários/ausências caem por cascade)
-        await tx.medico.delete({
-          where: { id: medicoId },
-        });
+        await tx.medico.delete({ where: { id: medicoId } });
       }
 
-      // 6) Usuário
-      await tx.user.delete({
-        where: { id },
-      });
+      await tx.user.delete({ where: { id } });
     });
 
     return NextResponse.json({ success: true });

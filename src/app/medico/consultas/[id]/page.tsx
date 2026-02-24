@@ -3,8 +3,6 @@ import { prisma } from "@/lib/prisma";
 import { notFound } from "next/navigation";
 import Editor from "./Editor";
 
-// helper para montar o valor do <input type="datetime-local">
-// sempre no fuso "America/Sao_Paulo"
 function toLocalInputValue(date: Date) {
   const formatter = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "America/Sao_Paulo",
@@ -18,16 +16,14 @@ function toLocalInputValue(date: Date) {
 
   const parts = formatter.formatToParts(date);
 
-  const get = (type: string) =>
-    parts.find((p) => p.type === type)?.value ?? "";
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
 
-  const day = get("day");    // 01
-  const month = get("month"); // 12
-  const year = get("year");  // 2025
-  const hour = get("hour");  // 08
-  const minute = get("minute"); // 00
+  const day = get("day");
+  const month = get("month");
+  const year = get("year");
+  const hour = get("hour");
+  const minute = get("minute");
 
-  // formato exigido pelo input datetime-local
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
@@ -51,13 +47,15 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default async function ConsultaPage({
-  params,
-}: {
-  params: { id: string };
-}) {
-  const id = Number(params.id);
-  if (!id || Number.isNaN(id)) return notFound();
+type PageProps = {
+  params: Promise<{ id: string }>;
+};
+
+export default async function ConsultaPage({ params }: PageProps) {
+  const { id: idStr } = await params;
+
+  const id = Number(idStr);
+  if (!Number.isFinite(id) || id <= 0) return notFound();
 
   const c = await prisma.consulta.findUnique({
     where: { id },
@@ -67,7 +65,6 @@ export default async function ConsultaPage({
 
   const d = new Date(c.data);
 
-  // texto informativo (08:00 certinho)
   const dataLabel = d.toLocaleString("pt-BR", {
     day: "2-digit",
     month: "2-digit",
@@ -77,12 +74,10 @@ export default async function ConsultaPage({
     timeZone: "America/Sao_Paulo",
   });
 
-  // valor para o input datetime-local, também em America/Sao_Paulo
   const dtLocal = toLocalInputValue(d);
 
   return (
     <main className="min-h-screen bg-[#F7F9FC] p-8 md:p-10 space-y-6">
-      {/* Header */}
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl md:text-3xl font-semibold text-[#1E63F3]">
@@ -101,15 +96,12 @@ export default async function ConsultaPage({
         </Link>
       </header>
 
-      {/* Card principal */}
       <section className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden max-w-3xl">
         <div className="px-6 py-4 border-b border-gray-200 flex flex-wrap items-center justify-between gap-2">
           <div className="text-gray-800">
             <div className="font-medium">
               Paciente:{" "}
-              <span className="font-semibold">
-                {c.paciente?.nome ?? "-"}
-              </span>
+              <span className="font-semibold">{c.paciente?.nome ?? "-"}</span>
             </div>
             <div className="text-sm text-gray-500">
               Data atual da consulta: {dataLabel}
@@ -123,7 +115,7 @@ export default async function ConsultaPage({
           <Editor
             id={c.id}
             defaultDate={dtLocal}
-            defaultStatus={c.status as any}
+            defaultStatus={c.status as "ABERTA" | "CONCLUIDA" | "CANCELADA" | "FALTOU" | "REMARCADA"}
           />
         </div>
       </section>

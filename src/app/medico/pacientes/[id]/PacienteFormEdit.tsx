@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -10,9 +11,11 @@ type Props = {
     cpf: string;
     email: string;
     telefone: string;
-    nascimento: string; // "yyyy-mm-dd" ou ""
+    nascimento: string; // "YYYY-MM-DD" ou ""
   };
 };
+
+type ApiError = { error?: string };
 
 export default function PacienteFormEdit({ id, initial }: Props) {
   const router = useRouter();
@@ -25,7 +28,7 @@ export default function PacienteFormEdit({ id, initial }: Props) {
   const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  async function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSaving(true);
     setErro(null);
@@ -35,26 +38,28 @@ export default function PacienteFormEdit({ id, initial }: Props) {
       cpf: cpf.trim(),
       email: email.trim() || null,
       telefone: telefone.trim() || null,
-      nascimento: nascimento || null, // "" -> null
+      nascimento: nascimento || null,
     };
 
-    const r = await fetch(`/api/medico/pacientes/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    try {
+      const r = await fetch(`/api/medico/pacientes/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
 
-    setSaving(false);
+      if (r.ok) {
+        alert("Paciente atualizado!");
+        router.push("/medico/pacientes");
+        router.refresh();
+        return;
+      }
 
-    if (r.ok) {
-      alert("Paciente atualizado!");
-      router.push("/medico/pacientes");
-      router.refresh();
-      return;
+      const j = (await r.json().catch(() => ({}))) as ApiError;
+      setErro(j?.error || `Erro (HTTP ${r.status}).`);
+    } finally {
+      setSaving(false);
     }
-
-    const j = await r.json().catch(() => ({}));
-    setErro(j?.error || `Erro (HTTP ${r.status}).`);
   }
 
   return (
@@ -82,7 +87,9 @@ export default function PacienteFormEdit({ id, initial }: Props) {
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1">Data de nascimento</label>
+        <label className="block text-sm font-medium mb-1">
+          Data de nascimento
+        </label>
         <input
           type="date"
           className="border rounded w-full p-2"
@@ -118,9 +125,10 @@ export default function PacienteFormEdit({ id, initial }: Props) {
         >
           {saving ? "Salvando..." : "Salvar"}
         </button>
-        <a href="/medico/pacientes" className="px-4 py-2 rounded border">
+
+        <Link href="/medico/pacientes" className="px-4 py-2 rounded border">
           Cancelar
-        </a>
+        </Link>
       </div>
     </form>
   );

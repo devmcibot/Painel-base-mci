@@ -1,22 +1,26 @@
-// src/app/api/admin/users/[id]/status/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+type Ctx = { params: Promise<{ id: string }> };
+type Body = { status?: "ACTIVE" | "BLOCKED" };
+
+export async function PATCH(req: NextRequest, ctx: Ctx) {
   const session = await getServerSession(authOptions);
-  if (!session || (session.user as any)?.role !== "ADMIN") {
+  if (!session || (session.user as { role?: string }).role !== "ADMIN") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const id = Number(params.id);
-  const { status } = await req.json(); // "ACTIVE" | "BLOCKED"
+  const { id: idStr } = await ctx.params;
+  const id = Number(idStr);
+  if (!Number.isFinite(id) || id <= 0) {
+    return NextResponse.json({ error: "ID inválido" }, { status: 400 });
+  }
 
-  if (!["ACTIVE", "BLOCKED"].includes(status)) {
+  const { status } = (await req.json()) as Body;
+
+  if (status !== "ACTIVE" && status !== "BLOCKED") {
     return NextResponse.json({ error: "status inválido" }, { status: 400 });
   }
 
@@ -24,13 +28,7 @@ export async function PATCH(
     const user = await prisma.user.update({
       where: { id },
       data: { status },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        status: true,
-      },
+      select: { id: true, email: true, name: true, role: true, status: true },
     });
 
     return NextResponse.json(user);

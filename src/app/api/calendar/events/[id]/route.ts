@@ -1,4 +1,3 @@
-// src/app/api/calendar/events/[id]/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -7,27 +6,29 @@ import { rmRecursive } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
 
-export async function DELETE(
-  _req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+type Ctx = { params: Promise<{ id: string }> };
+
+export async function DELETE(_req: NextRequest, ctx: Ctx) {
   try {
     const session = await getServerSession(authOptions);
-    const medicoId = (session?.user as any)?.medicoId as number | undefined;
+    const medicoId = (session?.user as { medicoId?: number } | null)?.medicoId;
+
     if (!session || !medicoId) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
 
-    const eventId = Number(params.id);
+    const { id: idStr } = await ctx.params;
+    const eventId = Number(idStr);
+    if (!Number.isFinite(eventId) || eventId <= 0) {
+      return NextResponse.json({ error: "ID inválido" }, { status: 400 });
+    }
 
-    // pega o evento e a consulta vinculada
     const ev = await prisma.agendaEvento.findFirst({
       where: { id: eventId, medicoId },
       select: { id: true, consultaId: true },
     });
     if (!ev) return NextResponse.json({ error: "NOT_FOUND" }, { status: 404 });
 
-    // pega a consulta com o caminho da pasta
     const consulta = ev.consultaId
       ? await prisma.consulta.findFirst({
           where: { id: ev.consultaId, medicoId },
@@ -35,17 +36,14 @@ export async function DELETE(
         })
       : null;
 
-    // apaga pasta no bucket (se existir)
     if (consulta?.pastaPath) {
       try {
         await rmRecursive(consulta.pastaPath);
       } catch (e) {
-        // não falhar a deleção lógica se storage der 404 etc.
         console.warn("[storage][rmRecursive] falhou:", e);
       }
     }
 
-    // apaga DB em transação: evento -> consulta
     await prisma.$transaction(async (tx) => {
       await tx.agendaEvento.delete({ where: { id: eventId } });
       if (consulta?.id) {
@@ -56,6 +54,9 @@ export async function DELETE(
     return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e) {
     console.error("[calendar/events/:id][DELETE]", e);
-    return NextResponse.json({ error: "INTERNAL_SERVER_ERROR" }, { status: 500 });
+    return NextResponse.json(
+      { error: "INTERNAL_SERVER_ERROR" },
+      { status: 500 }
+    );
   }
 }

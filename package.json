@@ -16,11 +16,11 @@
     "@prisma/client": "^6.15.0",
     "@supabase/supabase-js": "^2.57.4",
     "docx": "^9.5.1",
-    "next": "16.0.7",
+    "next": "^16.1.6",
     "next-auth": "^4.24.11",
     "openai": "^6.9.0",
-    "react": "19.2.1",
-    "react-dom": "19.2.1"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
