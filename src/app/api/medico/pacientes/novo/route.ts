@@ -8,16 +8,25 @@ import { ensureFolder, patientFolderPath } from "@/lib/storage";
 export const dynamic = "force-dynamic";
 
 // aceita dd/mm/aaaa ou dd/mm/aa (aa -> 19xx/20xx)
+// SALVA EM UTC 12:00 para não "voltar um dia" em timezones negativos (ex: -03)
 function parseBrDateFlexible(d?: string | null): Date | null {
   if (!d) return null;
   const m = /^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/.exec(d.trim());
   if (!m) return null;
-  const [, dd, mm, yy] = m;
+
+  const [, ddStr, mmStr, yy] = m;
+  const dd = Number(ddStr);
+  const mm = Number(mmStr);
+
   let year = Number(yy);
-  if (yy.length === 2) {
-    year = year >= 50 ? 1900 + year : 2000 + year;
-  }
-  const dt = new Date(year, Number(mm) - 1, Number(dd));
+  if (yy.length === 2) year = year >= 50 ? 1900 + year : 2000 + year;
+
+  if (!Number.isFinite(dd) || !Number.isFinite(mm) || !Number.isFinite(year)) return null;
+  if (mm < 1 || mm > 12) return null;
+  if (dd < 1 || dd > 31) return null;
+
+  // Meio-dia UTC evita cair no dia anterior em -03:00
+  const dt = new Date(Date.UTC(year, mm - 1, dd, 12, 0, 0, 0));
   return isNaN(dt.getTime()) ? null : dt;
 }
 
